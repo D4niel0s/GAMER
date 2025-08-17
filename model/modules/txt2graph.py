@@ -1,5 +1,5 @@
 import torch
-from torch_geometric.data import Data, Batch
+from torch_geometric.data import Data
 
 
 
@@ -60,7 +60,7 @@ def text_to_line_graph(embeds: torch.Tensor, attn_mask: torch.Tensor = None):
     elif embeds.dim() != 3:
         raise ValueError(f"Expected 2D or 3D tensor, got {embeds.dim()}D tensor.")
     
-    
+
     if attn_mask is not None and (attn_mask.dim() != 2 or attn_mask.size(0) != embeds.size(0) or attn_mask.size(1) != embeds.size(1)):
         raise ValueError(f"Attention mask must be 2D with shape ({embeds.size(0)}, {embeds.size(1)}), got {attn_mask.size()}.")
         
