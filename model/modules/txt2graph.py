@@ -3,7 +3,7 @@ from torch_geometric.data import Data
 
 
 
-def text_to_graph(embeds: torch.Tensor, attn_mask: torch.Tensor = None):
+def text_to_graph(embeds: torch.Tensor, **kwargs):
     """
     Convert given text embeddings to a latent graph representation.
     When given a batch of embeddings (3-dim tensor), will return a batch of graphs.
@@ -15,7 +15,7 @@ def text_to_graph(embeds: torch.Tensor, attn_mask: torch.Tensor = None):
     """
 
     # currently the built graph is a line graph, representing a 'natural' sequence.
-    return text_to_line_graph(embeds, attn_mask)
+    return text_to_line_graph(embeds, **kwargs)
 
 
 def text_to_line_graph(embeds: torch.Tensor, attn_mask: torch.Tensor = None):
