@@ -4,7 +4,7 @@ from txt2graph import text_to_graph
 from img2graph import image_to_graph
 
 
-
+from utils import union_graph, add_nodes
 
 
 def build_multimodal_graph(text_embeds: torch.Tensor,
@@ -37,11 +37,31 @@ def build_multimodal_graph(text_embeds: torch.Tensor,
     text_graphs = text_to_graph(text_embeds, attn_mask=attn_mask)
     image_graphs = image_to_graph(image_embeds, self_loops=self_loops)
 
-    return [build_hierarchical_mmg(i_graph, t_graph, N=grid_size) for i_graph, t_graph in zip(image_graphs, text_graphs)]
+    res = []
+    for i_graph, t_graph in zip(image_graphs, text_graphs):
+        mmg, info = build_hierarchical_mmg(i_graph, t_graph, N=grid_size)
+
+        res.append(add_type_features(mmg,
+                                     num_text = t_graph.num_nodes,
+                                     num_image = i_graph.num_nodes,
+                                     info = info,
+        ))
+
+    return res
 
 
 
 
+
+
+EDGE_TYPES = {
+        "intra-text": 0,
+        "intra-image": 1,
+        "img-to-quadrant": 2,
+        "quadrant-to-quadrant": 3,
+        "text-to-global": 4,
+        "fusion-connection": 5,
+}
 
 def build_hierarchical_mmg(image_graph: Data, text_graph: Data, N: int=14) -> Data:
     """
@@ -61,7 +81,11 @@ def build_hierarchical_mmg(image_graph: Data, text_graph: Data, N: int=14) -> Da
     """
 
     data = union_graph([image_graph, text_graph])
+    edge_types = []
 
+    # Assign inte text and intra image edge types
+    edge_types.extend([EDGE_TYPES["intra-image"]] * image_graph.edge_index.size(1))
+    edge_types.extend([EDGE_TYPES["intra-text"]] * text_graph.edge_index.size(1))
 
     # Calculate quadrant masks
     coords = torch.stack(torch.meshgrid(
@@ -88,11 +112,15 @@ def build_hierarchical_mmg(image_graph: Data, text_graph: Data, N: int=14) -> Da
         e2 = torch.stack([node_idxs, q])
         data.edge_index = torch.cat([data.edge_index, e1, e2], dim=1)
 
+        edge_types.extend([EDGE_TYPES["img-to-quadrant"]] * (e1.size(1) + e2.size(1)))
+
     # K4 between quadrants
     q1, q2 = torch.meshgrid(q_nodes, q_nodes, indexing="ij")
     mask = q1 != q2
     e = torch.stack([q1[mask], q2[mask]])
     data.edge_index = torch.cat([data.edge_index, e], dim=1)
+
+    edge_types.extend([EDGE_TYPES["quadrant-to-quadrant"]] * e.size(1))
 
 
     # Add text-global node and edges between it and all text nodes ( K_{1,|text|} )
@@ -105,6 +133,9 @@ def build_hierarchical_mmg(image_graph: Data, text_graph: Data, N: int=14) -> Da
     e2 = torch.stack([text_idxs, tg])
     data.edge_index = torch.cat([data.edge_index, e1, e2], dim=1)
 
+    edge_types.extend([EDGE_TYPES["text-to-global"]] * (e1.size(1) + e2.size(1)))
+
+
     # Add fusion node and edges between it and all special nodes (quadrants + text-global, resulting in K_{1,5} )
     fusion = add_nodes(data, 1)[0]
     specials = torch.cat([q_nodes, text_global.view(-1)])
@@ -113,54 +144,55 @@ def build_hierarchical_mmg(image_graph: Data, text_graph: Data, N: int=14) -> Da
     e2 = torch.stack([specials, f])
     data.edge_index = torch.cat([data.edge_index, e1, e2], dim=1)
 
+    edge_types.extend([EDGE_TYPES["fusion-connection"]] * (e1.size(1) + e2.size(1)))
+
+    return data, {
+        "q_nodes": q_nodes,
+        "text_global": text_global,
+        "fusion": fusion,
+        "edge_types": torch.tensor(edge_types)
+    }
+
+
+def add_type_features(data: Data,
+                      num_text: int,
+                      num_image: int,
+                      info: dict
+                      ) -> Data:
+    """
+    Augments a hierarchical multimodal graph with node-type and edge-type features.
+    Adds one-hot encodings of node types to node features (as concatenation to feature vectors), and one-hot encodings of edge types to edge attributes (overriding previous edge attr).
+
+    Assumes that the graph was built by `build_hierarchical_mmg`.
+
+    Args:
+        data (Data): The multimodal graph from `build_hierarchical_mmg`.
+        num_text (int): Number of text nodes (original, not virtual).
+        num_image (int): Number of image nodes (original, not virtual).
+        info (dict): The info dictionary returned by `build_hierarchical_mmg`.
+    """
+
+
+    device = data.x.device
+    num_nodes = data.num_nodes
+
+    # ---- Node type one-hots ----
+    num_node_types = 5
+    node_type_feats = torch.zeros((num_nodes, num_node_types), device=device)
+
+    # Assign
+    node_type_feats[:num_image, 0] = 1.0                    # image patch
+    node_type_feats[num_image:num_image+num_text, 1] = 1.0  # text tokens
+    node_type_feats[info['q_nodes'], 2] = 1.0                       # quadrant
+    node_type_feats[info['text_global'], 3] = 1.0                   # text-global
+    node_type_feats[info['fusion'], 4] = 1.0                        # fusion
+
+    # Concatenate to existing node features
+    data.x = torch.cat([data.x, node_type_feats], dim=-1)
+
+    # ---- Edge type one-hots ----
+    et = info["edge_types"]  # [E]
+    data.edge_attr = torch.nn.functional.one_hot(et, num_classes=len(EDGE_TYPES)).float()
+
+
     return data
-
-
-
-def union_graph(graphs: list[Data]) -> Data:
-    """
-    Return a union graph of a given list of graphs.
-    Each graph must have the same edge feature dimension.
-
-    Args:
-        graphs (list[Data]): List of graphs to union.
-    """
-
-    if not graphs: # Goofy edge case
-        return Data()
-
-    # Initialize with the first graph
-    union_graph = graphs[0].clone()
-    total_nodes = union_graph.num_nodes
-
-    for graph in graphs[1:]:
-        offset = total_nodes
-        # Add graph's nodes
-        union_graph.x = torch.cat([union_graph.x, graph.x], dim=0)
-
-        # Offset new edge indices by the number of nodes in the union graph so far (match the indices)
-        new_edges = graph.edge_index + offset
-
-        union_graph.edge_index = torch.cat([union_graph.edge_index, new_edges], dim=1)
-        total_nodes += graph.num_nodes
-
-    return union_graph
-
-
-
-
-def add_nodes(data: Data, num_new: int) -> torch.Tensor:
-    """
-    Add num_new nodes to the given graph and return their indices in the resulting graph.
-    New nodes' features are initialized to zero vectors.
-    Edges of the graph remain unchanged.
-
-    Args:
-        data (Data): The graph to which nodes will be added.
-        num_new (int): The number of new nodes to add.
-    """
-
-    old = data.num_nodes
-    new_idx = torch.arange(old, old + num_new, device=data.x.device)
-    data.x = torch.cat([data.x, torch.zeros(num_new, data.x.size(-1), device=data.x.device)], dim=0)
-    return new_idx
