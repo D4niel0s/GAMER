@@ -11,41 +11,7 @@ from torch_geometric.nn import (
     LayerNorm,
 )
 
-
-def mlp(
-        ch_in: int,
-        ch_out: int,
-        hidden: int,
-        num_hidden_layers: int = 1,
-        dropout: float = 0.0,
-        act: nn.Module = nn.GELU
-):
-    """
-    Build an MLP with 'num_hidden_layers' hidden layers, as-well as input and output layers.
-    Each hidden layer has 'hidden' width, uses the specified activation function, and uses dropout with the specified rate.
-    The MLP structure is as such:
-        - Linear(ch_in, hidden), activation, dropout
-        - num_hidden_layers * (Linear(hidden,hidden), activation, dropout)
-        - Linear(hidden, ch_out)
-
-    Args:
-        ch_in (int): Input feature dimension.
-        ch_out (int): Output feature dimension.
-        hidden (int): Width of hidden layers.
-        num_hidden_layers (int): Number of hidden layers (default: 2).
-        dropout (float): Dropout rate (default: 0.0).
-        act (nn.Module): Activation function to use (default: nn.GELU).
-    """
-
-    layers = [Linear(ch_in, hidden), act(), nn.Dropout(dropout)]
-
-    for _ in range(num_hidden_layers):
-        layers += [Linear(hidden, hidden), act(), nn.Dropout(dropout)]
-
-    layers += [Linear(hidden, ch_out)]
-
-    return nn.Sequential(*layers)
-
+from utils import mlp
 
 
 
@@ -74,7 +40,7 @@ class GraphGPSNet(nn.Module):
 
         # Input projection for node features, with optional PE
         ch_in = node_dim + pe_dim if self.use_pe else node_dim
-        self.node_mlp = mlp(ch_in=ch_in, ch_out=hidden_dim, hidden_dim=hidden_dim, num_hidden_layers=1, dropout=dropout)
+        self.node_mlp = mlp(ch_in=ch_in, ch_out=hidden_dim, hidden=hidden_dim, num_hidden_layers=1, dropout=dropout)
 
         # Projection for edge feats to hidden dimension (if edge_dim > 0)
         self.edge_mlp = mlp(edge_dim, hidden_dim, hidden_dim, num_hidden_layers=1, dropout=dropout) if edge_dim > 0 else None
@@ -101,7 +67,7 @@ class GraphGPSNet(nn.Module):
         self.postnet = mlp(
             ch_in = hidden_dim,
             ch_out = hidden_dim,
-            hidden_dim = int(post_mlp_width_mult * hidden_dim),
+            hidden = int(post_mlp_width_mult * hidden_dim),
             num_hidden_layers = 0,
             dropout = dropout
         )
@@ -110,7 +76,7 @@ class GraphGPSNet(nn.Module):
         self.readout = mlp(
             ch_in = hidden_dim,
             ch_out = num_tasks,
-            hidden_dim = hidden_dim,
+            hidden = hidden_dim,
             num_hidden_layers = 0,
             dropout = dropout
         )
@@ -147,32 +113,3 @@ class GraphGPSNet(nn.Module):
         # Predict
         out = self.readout(g)
         return out
-    
-
-
-
-
-
-
-# TODO: Below is example code from GPT. Still need to work on taking data and running through the model. Pushing this version since it's 0400 AM
-def preprocess_dataset(dataset: Iterable, k: int = 16, is_undirected: bool = True):
-    """
-    Apply Laplacian eigenvector positional encoding (LapPE) to each graph
-    in a dataset. Attaches node-level 'lap_pe' to every Data object.
-    """
-    transform = AddLaplacianEigenvectorPE(k=k, attr_name="lap_pe", is_undirected=is_undirected)
-    dataset = [transform(data) for data in dataset]
-    return dataset
-
-
-def batch_to_model_inputs(batch: Batch):
-    """
-    Convert a PyG Batch into arguments for GraphGPSNet.forward(...).
-    """
-    return dict(
-        x = getattr(batch, "x", None),             # node features or None
-        edge_index = batch.edge_index,             # COO edge index
-        batch = batch.batch,                       # graph id per node
-        edge_attr = getattr(batch, "edge_attr", None),  # optional edge features
-        lap_pe = getattr(batch, "lap_pe", None),   # optional LapPE
-    )
