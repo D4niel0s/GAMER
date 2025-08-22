@@ -1,1 +1,1 @@
-# GAMER - Graphs As Multi-modal latEnt Representations
+# GAMER - Graphs As Multi-modal intErmediate Representations
