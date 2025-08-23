@@ -1,13 +1,10 @@
 import torch, torch.nn as nn
 
-from torch_geometric.transforms import AddLaplacianEigenvectorPE
-from typing import Optional, Iterable, Literal
-from torch_geometric.data import Batch
+from typing import Optional, Literal
 from torch_geometric.nn import (
     GPSConv,
     GINEConv,
     global_mean_pool,
-    Linear,
     LayerNorm,
 )
 
