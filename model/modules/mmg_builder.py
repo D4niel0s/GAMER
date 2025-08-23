@@ -12,6 +12,8 @@ def build_multimodal_graph(text_embeds: torch.Tensor,
                            attn_mask: torch.Tensor,
                            self_loops: bool = False,
                            grid_size: int = 14,
+                           fusion_num: int = 4,
+                           text_global_num: int = 2
                            ):
     
     """
@@ -29,6 +31,8 @@ def build_multimodal_graph(text_embeds: torch.Tensor,
         attn_mask (torch.Tensor): Attention mask for text embeddings of shape (batch_size, seq_len), where 1 indicates valid tokens and 0 indicates padding.
         self_loops (bool): Whether to add self-loops to the image graph. Default: False.
         grid_size (int): Size of the grid for the image graph. Default: 14.
+        fusion_num (int): Number of fusion virtual nodes. Default: 4.
+        text_global_num (int): Number of text-global virtual nodes. Default: 2.
     """
 
     if text_embeds.shape[0] != attn_mask.shape[0]:
@@ -39,7 +43,7 @@ def build_multimodal_graph(text_embeds: torch.Tensor,
 
     res = []
     for i_graph, t_graph in zip(image_graphs, text_graphs):
-        mmg, info = build_hierarchical_mmg(i_graph, t_graph, N=grid_size)
+        mmg, info = build_hierarchical_mmg(i_graph, t_graph, N=grid_size, fusion_num=fusion_num, text_global_num=text_global_num)
 
         res.append(add_type_features(mmg,
                                      num_text = t_graph.num_nodes,
@@ -63,13 +67,13 @@ EDGE_TYPES = {
         "fusion-connection": 5,
 }
 
-def build_hierarchical_mmg(image_graph: Data, text_graph: Data, N: int=14) -> Data:
+def build_hierarchical_mmg(image_graph: Data, text_graph: Data, N: int=14, fusion_num: int = 4, text_global_num: int = 2) -> Data:
     """
     Fuse a text (line) graph and an image (grid) graph into a multimodal graph.
     The resulting graph will have:
       - 4 quadrant virtual nodes (K4 + connected to their pixels)
-      - 1 text-global virtual node (connected to all text nodes)
-      - 1 fusion virtual node (connected to quadrants + text-global)
+      - `text_global_num` text-global virtual node (each connected to all text nodes)
+      - `fusion_num` fusion virtual nodes (each connected to quadrants + text-global)
 
     
     A square grid of size N x N is assumed for the image graph.
@@ -78,6 +82,8 @@ def build_hierarchical_mmg(image_graph: Data, text_graph: Data, N: int=14) -> Da
         image_graph (Data): Image graph, assumed to be a grid graph.
         text_graph (Data): Text graph, assumed to be a line graph.
         N (int): Size of the grid for the image graph. Default: 14.
+        fusion_num (int): Number of fusion virtual nodes. Default: 4.
+        text_global_num (int): Number of text-global virtual nodes. Default: 2.
     """
 
     data = union_graph([image_graph, text_graph])
@@ -124,32 +130,36 @@ def build_hierarchical_mmg(image_graph: Data, text_graph: Data, N: int=14) -> Da
 
 
     # Add text-global node and edges between it and all text nodes ( K_{1,|text|} )
-    text_global = add_nodes(data, 1)[0]
+    text_globals = add_nodes(data, text_global_num)
     text_start = image_graph.num_nodes
-
     text_idxs = torch.arange(text_start, text_start + text_graph.num_nodes, device=data.x.device)
-    tg = text_global.repeat(text_idxs.size(0))
-    e1 = torch.stack([tg, text_idxs])
-    e2 = torch.stack([text_idxs, tg])
-    data.edge_index = torch.cat([data.edge_index, e1, e2], dim=1)
 
-    edge_types.extend([EDGE_TYPES["text-to-global"]] * (e1.size(1) + e2.size(1)))
+    for tg in text_globals:
+        txt_global = tg.repeat(text_idxs.size(0))
+        e1 = torch.stack([txt_global, text_idxs])
+        e2 = torch.stack([text_idxs, txt_global])
+        data.edge_index = torch.cat([data.edge_index, e1, e2], dim=1)
+
+        edge_types.extend([EDGE_TYPES["text-to-global"]] * (e1.size(1) + e2.size(1)))
 
 
-    # Add fusion node and edges between it and all special nodes (quadrants + text-global, resulting in K_{1,5} )
-    fusion = add_nodes(data, 1)[0]
-    specials = torch.cat([q_nodes, text_global.view(-1)])
-    f = fusion.repeat(specials.size(0))
-    e1 = torch.stack([f, specials])
-    e2 = torch.stack([specials, f])
-    data.edge_index = torch.cat([data.edge_index, e1, e2], dim=1)
+    # Add fusion_num fusion nodes, each connected to all special nodes (quadrants + text-global)
+    fusion_nodes = add_nodes(data, fusion_num)
+    specials = torch.cat([q_nodes, text_globals.view(-1)])  # All special nodes
 
-    edge_types.extend([EDGE_TYPES["fusion-connection"]] * (e1.size(1) + e2.size(1)))
+    for fusion in fusion_nodes:
+        # Connect this fusion node to all special nodes (K_{1,5})
+        f = fusion.repeat(specials.size(0))
+        e1 = torch.stack([f, specials])
+        e2 = torch.stack([specials, f])
+        data.edge_index = torch.cat([data.edge_index, e1, e2], dim=1)
+        
+        edge_types.extend([EDGE_TYPES["fusion-connection"]] * (e1.size(1) + e2.size(1)))
 
     return data, {
         "q_nodes": q_nodes,
-        "text_global": text_global,
-        "fusion": fusion,
+        "text_global": text_globals,
+        "fusion": fusion_nodes,
         "edge_types": torch.tensor(edge_types)
     }
 
