@@ -37,8 +37,8 @@ def text_to_line_graph(embeds: torch.Tensor, attn_mask: torch.Tensor = None):
 
         L = embeds.size(0) # seq len
 
-        src_nodes = torch.arange(L-1)
-        target_nodes = torch.arange(1, L)
+        src_nodes = torch.arange(L-1, device=embeds.device)
+        target_nodes = torch.arange(1, L, device=embeds.device)
 
         # forward edges (i → i+1) and backward edges (i+1 → i)
         src = torch.cat([src_nodes, target_nodes], dim=0)

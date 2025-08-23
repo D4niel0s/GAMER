@@ -58,10 +58,7 @@ def image_to_grid_graph(embeds: torch.Tensor, self_loops: bool = False):
         src = torch.arange(H*W).view(-1,1).expand(-1,offsets.shape[0])[valid_mask]
         dst = (neighbors[...,0]*W + neighbors[...,1])[valid_mask]
 
-        return torch.stack([src, dst], dim=0)
-
-
-
+        return torch.stack([src, dst], dim=0).to(embeds.device)
 
     if embeds.dim() == 2:
             # Single sample, no batch dimension
