@@ -107,6 +107,9 @@ encoded = vqa_data.map(
     batch_size=64,
     features=new_features
 )
+
+encoded = encoded.remove_columns(["image"])
+
 print("Huzzah!! Processing complete! Saving to disk...")
 
 
