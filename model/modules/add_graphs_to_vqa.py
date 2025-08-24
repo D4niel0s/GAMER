@@ -2,7 +2,8 @@ from transformers import BeitImageProcessor, BeitModel, BertTokenizer, BertModel
 from PIL import Image
 
 from mmg_builder import build_multimodal_graph 				# embeds -> graph
-from datasets import load_dataset
+from datasets import load_dataset, Features, Sequence, Value
+
 import torch
 
 
@@ -62,14 +63,16 @@ def process_batch(batch):
 
 
 
+
 def data_to_dict(data):
-    """Convert PyTorch Geometric Data to serializable dict"""
+    """Convert PyTorch Geometric Data to Arrow/NumPy-friendly dict"""
     return {
-        'x': data.x if data.x is not None else None,
-        'edge_index': data.edge_index if data.edge_index is not None else None,
-        'edge_attr': data.edge_attr if data.edge_attr is not None else None,
-        # Add other attributes as needed
+        "x": data.x.cpu().numpy().astype("float32") if data.x is not None else None,
+        "edge_index": data.edge_index.cpu().numpy().astype("int64") if data.edge_index is not None else None,
+        "edge_attr": data.edge_attr.cpu().numpy().astype("float32") if data.edge_attr is not None else None,
     }
+
+
 
 def dict_to_data(data_dict):
     """Convert dict back to PyTorch Geometric Data"""
@@ -77,22 +80,32 @@ def dict_to_data(data_dict):
     import torch
     
     return Data(
-        x=torch.tensor(data_dict['x']) if data_dict['x'] is not None else None,
-        edge_index=torch.tensor(data_dict['edge_index']) if data_dict['edge_index'] is not None else None,
-        edge_attr=torch.tensor(data_dict['edge_attr']) if data_dict['edge_attr'] is not None else None,
+        x=None if data_dict["x"] is None else torch.tensor(data_dict["x"], dtype=torch.float),
+        edge_index=None if data_dict["edge_index"] is None else torch.tensor(data_dict["edge_index"], dtype=torch.long),
+        edge_attr=None if data_dict["edge_attr"] is None else torch.tensor(data_dict["edge_attr"], dtype=torch.float),
     )
 
 
 
 
-vqa_data = load_dataset("pingzhili/vqa_v2", split="train")
+vqa_data = load_dataset("pingzhili/vqa_v2")
 print("Hooray!! VQA downloaded!! Starting processing...")
 
+
+
+
+new_features = vqa_data.features.copy()
+new_features["multimodal_graph"] = Features({
+                                    "x": Sequence(Sequence(Value("float32"))),        # [num_nodes, num_features]
+                                    "edge_index": Sequence(Sequence(Value("int64"))), # [2, num_edges]
+                                    "edge_attr": Sequence(Sequence(Value("float32"))) # [num_edges, edge_feat_dim]
+                                })
 
 encoded = vqa_data.map(
     process_batch,
     batched=True,
     batch_size=64,
+    features=new_features
 )
 print("Huzzah!! Processing complete! Saving to disk...")
 
