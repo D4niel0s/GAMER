@@ -1,8 +1,9 @@
 import warnings, torch, requests
 warnings.filterwarnings("ignore")
 
-from torch_geometric.loader import DataLoader
+from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from torch_geometric.data import Dataset, Data
+from torch_geometric.loader import DataLoader
 
 from utils import preprocess_dataset, batch_to_model_inputs # graph -> batch + PE
 from graphGPS import GraphGPSNet 							# model
@@ -17,26 +18,34 @@ def row_to_data(row):
     edge_attr = torch.tensor(row["edge_attr"], dtype=torch.float)
     return Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
 
-class GraphDataset(Dataset):
+def make_transform(k=16, is_undirected=True):
+    return AddLaplacianEigenvectorPE(k=k, attr_name="lap_pe", is_undirected=is_undirected)
+
+
+
+class HFDataset(Dataset):
     def __init__(self, hf_dataset, column="multimodal_graph", transform=None):
         super().__init__(None, transform)
         self.hf_dataset = hf_dataset
         self.column = column
+        self.transform = transform
 
     def len(self):
         return len(self.hf_dataset)
 
     def get(self, idx):
-        return row_to_data(self.hf_dataset[idx][self.column])
+        row = self.hf_dataset[idx][self.column]
+        data = row_to_data(row)
+        if self.transform is not None:
+            data = self.transform(data)
+        return data
 
+def load_data_w_pe(data_dir, batch_size=32, shuffle=True):
+    transform = make_transform(k=16)
+    hf_dataset = load_from_disk(data_dir)
 
-def load_data_add_pe(data_dir):
-    dataset = load_from_disk(data_dir)
-
-    train_dl = DataLoader(GraphDataset(dataset["train"]), batch_size=32, shuffle=True)
-    val_dl = DataLoader(GraphDataset(dataset["validation"]), batch_size=32, shuffle=False)
-
-    return  preprocess_dataset(train_dl), preprocess_dataset(val_dl)
+    dataset = HFDataset(hf_dataset, column="multimodal_graph", transform=transform)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
 # Assume dataset has column 'multimodal_graph' which contains dict with x,edge_index,edge_attrs
 data_dir = '/home/yandex/MLWG2025/danielvolkov/datasets/VQA_mmg_BERT_BeiT_6fus_2tg/'
@@ -64,7 +73,7 @@ num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_g
 print(f"Total number of trainable parameters: {num_trainable_params: ,}")
 
 
-train_dl, val_dl = load_data_add_pe(data_dir)
+train_dl, val_dl = load_data_w_pe(data_dir)
 
 
 input_batch = batch_to_model_inputs(next(iter(train_dl)))
