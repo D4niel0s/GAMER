@@ -93,9 +93,11 @@ print(f"Total number of trainable parameters: {num_trainable_params: ,}")
 
 train_dl, val_dl = load_data_w_pe(data_dir)
 
+for batch in train_dl:
+    input_batch = batch_to_model_inputs(batch)
+    print(input_batch)
 
-input_batch = batch_to_model_inputs(next(iter(train_dl)))
-print(input_batch)
+    res = model(**input_batch) # Prints actual numbers huzzah!!
+    print(f'{res=}, {res.shape=}')
 
-res = model(**input_batch) # Prints actual numbers huzzah!!
-print(f'{res=}, {res.shape=}')
+    break
