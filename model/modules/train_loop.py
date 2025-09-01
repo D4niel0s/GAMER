@@ -73,7 +73,7 @@ num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_g
 print(f"Total number of trainable parameters: {num_trainable_params: ,}")
 
 
-train_dl, val_dl = load_data_w_pe(data_dir, split='train')
+train_dl = load_data_w_pe(data_dir, split='train')
 
 
 input_batch = batch_to_model_inputs(next(iter(train_dl)))
