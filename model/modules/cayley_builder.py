@@ -147,7 +147,6 @@ def process_batch(batch):
 
 	return batch
 
-
 def embed_text(texts: list[str]):
     inputs = bert_tokenizer(texts, return_tensors="pt", padding=True).to('cuda')
     with torch.no_grad():
