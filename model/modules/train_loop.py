@@ -106,11 +106,6 @@
 
 
 
-
-
-
-
-
 import warnings, torch, requests
 warnings.filterwarnings("ignore")
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
@@ -120,7 +115,6 @@ from torch_geometric.loader import DataLoader
 from utils import preprocess_dataset, batch_to_model_inputs # graph -> batch + PE
 from graphGPS import GraphGPSNet # model
 from datasets import load_from_disk
-import gc
 
 def row_to_data(row):
     x = torch.tensor(row["x"], dtype=torch.float)
@@ -162,121 +156,107 @@ def load_data_w_pe(data_dir, splits=['train', 'validation'], batch_size=32, shuf
         loaders.append(loader)
     return tuple(loaders)
 
-# Assume dataset has column 'multimodal_graph' which contains dict with x,edge_index,edge_attrs
+# Setup
 data_dir = '/home/yandex/MLWG2025/danielvolkov/datasets/VQA_mmg_BERT_BeiT_6fus_2tg/'
 model = GraphGPSNet(
-    node_dim = 768 + 5, # 768 is BERT/BeiT embeds, 5 extra feats are node type one-hots
-    edge_dim = 6, # 6 feats are edge type one-hots
-    num_tasks = 3_000, # For VQA we need to predict from 3,000 classes (answers)
-    hidden_dim = 768, # idk man just match BERT or smth seems legit
-    pe_dim = 16, # standard (I thinks?)
-    num_layers = 5, # Graph is connected with max 5 hop distance
-    heads = 8, # Random ass number that seems cool
-    dropout = 0.1, # idk man wtf is dropout
+    node_dim = 768 + 5,
+    edge_dim = 6,
+    num_tasks = 3_000,
+    hidden_dim = 768,
+    pe_dim = 16,
+    num_layers = 5,
+    heads = 8,
+    dropout = 0.1,
     post_mlp_width_mult = 2.0,
     readout_method = 'mean'
-).cuda()  # Move model to GPU once
+).cuda()
 
-print(model)
-num_params = sum(p.numel() for p in model.parameters())
-print(f"Total number of parameters: {num_params: ,}")
-num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"Total number of trainable parameters: {num_trainable_params: ,}")
+print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-train_dl, val_dl = load_data_w_pe(data_dir)
+# DEBUGGING: Let's isolate the problem step by step
 
-# TRAINING LOOP with proper memory management
-model.train()  # Enable training mode
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+print("\n=== STEP 1: Test single batch without loop ===")
+train_dl, val_dl = load_data_w_pe(data_dir, batch_size=32)
+batch = next(iter(train_dl))
+print(f"Batch type: {type(batch)}")
+print(f"Batch keys: {batch.keys if hasattr(batch, 'keys') else 'No keys attr'}")
 
-for i, batch in enumerate(train_dl):
-    if i >= 100:
-        break
-        
-    try:
-        # Zero gradients
-        optimizer.zero_grad()
-        
-        # Move to GPU
-        input_batch = batch_to_model_inputs(batch)
-        input_batch = {k: v.cuda() for k, v in input_batch.items() if torch.is_tensor(v)}
-        
-        # Forward pass
-        res = model(**input_batch)
-        
-        # Compute loss (you'll need to add your actual loss computation here)
-        # loss = your_loss_function(res, targets)
-        print(f"Batch {i}: Output shape: {res.shape}")
-        
-        # Backward pass (uncomment when you have loss)
-        # loss.backward()
-        # optimizer.step()
-        
-        # CRITICAL: Clean up GPU memory after each batch
-        del res, input_batch, batch
-        torch.cuda.empty_cache()
-        
-        # Force garbage collection every 10 iterations
-        if i % 10 == 0:
-            gc.collect()
-            print(f"Completed {i} batches, GPU memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB")
-                
-    except RuntimeError as e:
-        if "out of memory" in str(e):
-            print(f"OOM at batch {i}, cleaning up...")
-            torch.cuda.empty_cache()
-            gc.collect()
-            continue
-        else:
-            raise e
+print("\n=== STEP 2: Test batch_to_model_inputs ===")
+input_batch = batch_to_model_inputs(batch)
+print(f"Input batch type: {type(input_batch)}")
+print(f"Input batch keys: {list(input_batch.keys()) if hasattr(input_batch, 'keys') else 'No keys'}")
 
-print("Training loop skeleton completed successfully!")
+# Check what's actually in input_batch
+for k, v in input_batch.items():
+    if torch.is_tensor(v):
+        print(f"  {k}: {v.shape} ({v.dtype}) - {v.numel()} elements")
+    else:
+        print(f"  {k}: {type(v)} - {v}")
 
-# ALTERNATIVE: Gradient checkpointing for even more memory savings
-"""
-# If you still get OOM, use gradient checkpointing to trade compute for memory
+print("\n=== STEP 3: Test GPU transfer ===")
+gpu_batch = {k: v.cuda() if torch.is_tensor(v) else v for k, v in input_batch.items()}
+print("GPU transfer successful")
+
+print(f"GPU memory after transfer: {torch.cuda.memory_allocated()/1024**3:.2f}GB")
+
+print("\n=== STEP 4: Test model forward ===")
+model.train()
+res = model(**gpu_batch)
+print(f"Forward pass successful, output shape: {res.shape}")
+print(f"GPU memory after forward: {torch.cuda.memory_allocated()/1024**3:.2f}GB")
+
+# Now let's test the actual loop to see where it breaks
+print("\n=== STEP 5: Test loop (this is where it probably breaks) ===")
+
+# SUSPECTED ISSUES TO CHECK:
+# 1. Are you accumulating gradients without clearing them?
+# 2. Is batch_to_model_inputs creating references that don't get cleaned up?
+# 3. Is the DataLoader holding onto batches?
+# 4. Is AddLaplacianEigenvectorPE creating persistent references?
+
 model.train()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
 for i, batch in enumerate(train_dl):
-    if i >= 100:
+    if i >= 5:  # Just test first few batches
         break
-        
+    
+    print(f"\n--- Batch {i} ---")
+    print(f"Memory at start: {torch.cuda.memory_allocated()/1024**3:.2f}GB")
+    
+    # Standard training loop - NO manual memory management
     optimizer.zero_grad()
     
     input_batch = batch_to_model_inputs(batch)
-    input_batch = {k: v.cuda() for k, v in input_batch.items() if torch.is_tensor(v)}
+    input_batch = {k: v.cuda() if torch.is_tensor(v) else v for k, v in input_batch.items()}
     
-    # Use gradient checkpointing to save memory during forward pass
-    res = torch.utils.checkpoint.checkpoint(model, **input_batch)
+    print(f"Memory after GPU transfer: {torch.cuda.memory_allocated()/1024**3:.2f}GB")
     
-    # loss = your_loss_function(res, targets)
-    # loss.backward()
+    res = model(**input_batch)
+    
+    print(f"Memory after forward: {torch.cuda.memory_allocated()/1024**3:.2f}GB")
+    print(f"Forward successful, output: {res.shape}")
+    
+    # Simulate loss and backward (comment out if this causes issues)
+    # fake_loss = res.sum()  # Dummy loss
+    # fake_loss.backward()
     # optimizer.step()
     
-    del res, input_batch, batch
-    torch.cuda.empty_cache()
-"""
+    print(f"Memory at end of iteration: {torch.cuda.memory_allocated()/1024**3:.2f}GB")
 
-# ALTERNATIVE SOLUTION 3: Process smaller chunks
-"""
-# If you still get OOM, try processing in smaller chunks
-def process_in_chunks(batch, model, chunk_size=4):
-    # This assumes your batch can be split - you might need to adapt based on your batch structure
-    results = []
-    total_samples = batch.x.size(0) if hasattr(batch, 'x') else len(batch)
-    
-    for start_idx in range(0, total_samples, chunk_size):
-        end_idx = min(start_idx + chunk_size, total_samples)
-        # Create mini-batch (this is pseudo-code, adapt to your batch structure)
-        mini_batch = create_mini_batch(batch, start_idx, end_idx)
-        
-        with torch.no_grad():
-            mini_result = model(**mini_batch)
-            results.append(mini_result.cpu())  # Move to CPU immediately
-            
-        del mini_batch, mini_result
-        torch.cuda.empty_cache()
-    
-    return torch.cat(results, dim=0)
-"""
+print("\n=== DEBUGGING COMPLETE ===")
+
+# COMMON ISSUES TO CHECK:
+print("""
+LIKELY CULPRITS:
+1. Check your batch_to_model_inputs() function - is it creating copies?
+2. Check if AddLaplacianEigenvectorPE is holding references
+3. Are your graphs extremely large?
+4. Is there a gradient accumulation bug?
+
+Try these fixes:
+- Reduce batch_size to 1 temporarily 
+- Remove the PE transform temporarily
+- Check the actual size of your graphs (num_nodes, num_edges)
+- Look inside batch_to_model_inputs() for memory leaks
+""")
