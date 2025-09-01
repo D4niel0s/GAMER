@@ -113,14 +113,13 @@ import warnings, torch
 warnings.filterwarnings("ignore")
 
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
-from torch_geometric.data import Dataset, Data
+from torch_geometric.data import Dataset, Data, Batch
 from torch_geometric.loader import DataLoader
 
-from utils import batch_to_model_inputs  # should take batch and model, returns only valid keys
+from utils import batch_to_model_inputs  # optional, we will implement safe version
 from graphGPS import GraphGPSNet
 from datasets import load_from_disk
 from tqdm import tqdm
-import inspect
 
 # ------------------------
 # Helpers
@@ -156,23 +155,28 @@ class HFDataset(Dataset):
         if self.transform is not None:
             data = self.transform(data)
 
-        # Detach lap_pe and keep on CPU
+        # Detach LapPE and keep on CPU
         if hasattr(data, 'lap_pe'):
             data.lap_pe = data.lap_pe.detach().cpu()
         return data
 
 # ------------------------
-# Safe batch_to_model_inputs
+# Safe collate_fn
 # ------------------------
 
-def batch_to_model_inputs_safe(batch, model):
-    """Extract only tensors your model.forward expects."""
-    sig = inspect.signature(model.forward)
-    allowed_keys = sig.parameters.keys()
-    inputs = {k: getattr(batch, k) for k in allowed_keys if hasattr(batch, k)}
+def collate_fn_safe(batch, model):
+    """
+    Convert list of Data objects into dict of tensors for the model,
+    filtering out all extra PyG Batch attributes like ptr.
+    """
+    # Create Batch object (for proper edge_index stacking)
+    batch_obj = Batch.from_data_list(batch)
+
+    # Explicit whitelist of keys your model.forward expects
+    model_keys = ['x', 'edge_index', 'edge_attr', 'batch']
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    inputs = {k: v.to(device) if torch.is_tensor(v) else v for k, v in inputs.items()}
-    return inputs
+
+    return {k: getattr(batch_obj, k).to(device) for k in model_keys if hasattr(batch_obj, k)}
 
 # ------------------------
 # Data loaders
@@ -186,18 +190,11 @@ def load_data_w_pe(data_dir, splits=['train', 'validation'], batch_size=32, shuf
     for split in splits:
         dataset = HFDataset(hf_dataset[split], column="multimodal_graph", transform=transform)
 
-        def collate_fn(batch):
-            # batch is list of Data objects
-            from torch_geometric.data import Batch
-            batch_obj = Batch.from_data_list(batch)
-            # Filter only what model expects
-            return batch_to_model_inputs_safe(batch_obj, model)
-
         loader = DataLoader(
             dataset,
             batch_size=batch_size,
             shuffle=shuffle,
-            collate_fn=collate_fn
+            collate_fn=lambda batch: collate_fn_safe(batch, model)
         )
         loaders.append(loader)
     return tuple(loaders)
@@ -236,7 +233,7 @@ train_dl, val_dl = load_data_w_pe(data_dir, batch_size=32)
 # ------------------------
 
 for input_batch in train_dl:
-    # input_batch is already GPU-ready and filtered
+    # input_batch is already GPU-ready and filtered (no ptr)
     res = model(**input_batch)
     print(f"{res=}, {res.shape=}")
     break
