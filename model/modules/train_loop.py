@@ -53,22 +53,12 @@ def load_data_w_pe(data_dir, splits=['train', 'validation'], batch_size=32, shuf
         loader = DataLoader(
             dataset,
             batch_size=batch_size,
-            shuffle=shuffle,
-            collate_fn=make_collate_fn(batch_to_model_inputs),
+            shuffle=shuffle
         )
 
         loaders.append(loader)
 
     return tuple(loaders)
-
-
-
-def make_collate_fn(batch_to_model_inputs):
-    pyg_collater = Collater(None, None)  # default PyG collate
-    def collate_fn(batch):
-        data_batch = pyg_collater(batch)            # standard DataBatch
-        return batch_to_model_inputs(data_batch)    # your dict
-    return collate_fn
 
 
 
@@ -104,7 +94,7 @@ print(f"Total number of trainable parameters: {num_trainable_params: ,}")
 train_dl, val_dl = load_data_w_pe(data_dir)
 
 
-input_batch = next(iter(train_dl))
+input_batch = batch_to_model_inputs(next(iter(train_dl)))
 print(input_batch)
 
 res = model(**input_batch) # Prints actual numbers huzzah!!
