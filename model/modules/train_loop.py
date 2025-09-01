@@ -40,9 +40,9 @@ class HFDataset(Dataset):
             data = self.transform(data)
         return data
 
-def load_data_w_pe(data_dir, batch_size=32, shuffle=True):
+def load_data_w_pe(data_dir, split='train', batch_size=32, shuffle=True):
     transform = make_transform(k=16)
-    hf_dataset = load_from_disk(data_dir)
+    hf_dataset = load_from_disk(data_dir)[split]
 
     dataset = HFDataset(hf_dataset, column="multimodal_graph", transform=transform)
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
@@ -73,7 +73,7 @@ num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_g
 print(f"Total number of trainable parameters: {num_trainable_params: ,}")
 
 
-train_dl, val_dl = load_data_w_pe(data_dir)
+train_dl, val_dl = load_data_w_pe(data_dir, split='train')
 
 
 input_batch = batch_to_model_inputs(next(iter(train_dl)))
