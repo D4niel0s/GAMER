@@ -4,6 +4,7 @@ from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from torch_geometric.data import Data, Batch
 from torch_geometric.nn import Linear
 from typing import Iterable
+from tqdm import tqdm
 
 
 
@@ -107,7 +108,7 @@ def preprocess_dataset(dataset: Iterable, k: int = 16, is_undirected: bool = Tru
     in a dataset. Attaches node-level 'lap_pe' to every Data object.
     """
     transform = AddLaplacianEigenvectorPE(k=k, attr_name="lap_pe", is_undirected=is_undirected)
-    dataset = [transform(data) for data in dataset]
+    dataset = [transform(data) for data in tqdm(dataset)]
     return dataset
 
 def batch_to_model_inputs(batch: Batch):
