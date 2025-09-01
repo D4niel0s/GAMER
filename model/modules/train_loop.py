@@ -2,25 +2,44 @@ import warnings, torch, requests
 warnings.filterwarnings("ignore")
 
 from torch_geometric.loader import DataLoader
-from torch_geometric.data import Data
+from torch_geometric.data import Dataset, Data
 
-
-from mmg_builder import build_multimodal_graph 				# embeds -> graph
 from utils import preprocess_dataset, batch_to_model_inputs # graph -> batch + PE
 from graphGPS import GraphGPSNet 							# model
 
 from datasets import load_from_disk
 
+
+
+def row_to_data(row):
+    x = torch.tensor(row["x"], dtype=torch.float)
+    edge_index = torch.tensor(row["edge_index"], dtype=torch.long)
+    edge_attr = torch.tensor(row["edge_attr"], dtype=torch.float)
+    return Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+
+class GraphDataset(Dataset):
+    def __init__(self, hf_dataset, column="multimodal_graph", transform=None):
+        super().__init__(None, transform)
+        self.hf_dataset = hf_dataset
+        self.column = column
+
+    def len(self):
+        return len(self.hf_dataset)
+
+    def get(self, idx):
+        return row_to_data(self.hf_dataset[idx][self.column])
+
+
+def load_data_add_pe(data_dir):
+    dataset = load_from_disk(data_dir)
+
+    train_dl = DataLoader(GraphDataset(dataset["train"]), batch_size=32, shuffle=True)
+    val_dl = DataLoader(GraphDataset(dataset["validation"]), batch_size=32, shuffle=False)
+
+    return  preprocess_dataset(train_dl), preprocess_dataset(val_dl)
+
 # Assume dataset has column 'multimodal_graph' which contains dict with x,edge_index,edge_attrs
 data_dir = '/home/yandex/MLWG2025/danielvolkov/datasets/VQA_mmg_BERT_BeiT_6fus_2tg/'
-data = load_from_disk(data_dir)
-
-sample_graph = {k: torch.tensor(v) for k, v in data['train'][0]['multimodal_graph'].items()}
-print({k: v.shape for k, v in sample_graph.items()})
-
-sample = [Data(**sample_graph)]
-print(sample)
-
 
 
 model = GraphGPSNet(
@@ -45,16 +64,11 @@ num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_g
 print(f"Total number of trainable parameters: {num_trainable_params: ,}")
 
 
-
-loader = DataLoader(sample) # batch_size=10, shuffle=True
-loader_with_pe = preprocess_dataset(loader)
-
-next(iter(loader_with_pe))
+train_dl, val_dl = load_data_add_pe(data_dir)
 
 
-
-input_batch = batch_to_model_inputs(next(iter(loader_with_pe)))
+input_batch = batch_to_model_inputs(next(iter(train_dl)))
 print(input_batch)
 
-
-model(**input_batch) # Prints actual numbers huzzah!!
+res = model(**input_batch) # Prints actual numbers huzzah!!
+print(f'{res=}, {res.shape=}')
