@@ -109,9 +109,6 @@
 
 
 
-
-
-
 import warnings, torch
 warnings.filterwarnings("ignore")
 
@@ -119,17 +116,18 @@ from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from torch_geometric.data import Dataset, Data
 from torch_geometric.loader import DataLoader
 
-from utils import batch_to_model_inputs  # your function to convert batch -> model inputs
+from utils import batch_to_model_inputs  # should take batch and model, returns only valid keys
 from graphGPS import GraphGPSNet
 from datasets import load_from_disk
 from tqdm import tqdm
+import inspect
 
 # ------------------------
-# Helper functions
+# Helpers
 # ------------------------
 
 def row_to_data(row):
-    """Convert a dict with x, edge_index, edge_attr into PyG Data."""
+    """Convert HF dict to PyG Data."""
     x = torch.tensor(row["x"], dtype=torch.float)
     edge_index = torch.tensor(row["edge_index"], dtype=torch.long)
     edge_attr = torch.tensor(row["edge_attr"], dtype=torch.float)
@@ -139,7 +137,7 @@ def make_transform(k=16, is_undirected=True):
     return AddLaplacianEigenvectorPE(k=k, attr_name="lap_pe", is_undirected=is_undirected)
 
 # ------------------------
-# PyG Dataset wrapper
+# HF Dataset wrapper
 # ------------------------
 
 class HFDataset(Dataset):
@@ -158,13 +156,26 @@ class HFDataset(Dataset):
         if self.transform is not None:
             data = self.transform(data)
 
-        # Detach lap_pe and keep on CPU to avoid GPU leaks
+        # Detach lap_pe and keep on CPU
         if hasattr(data, 'lap_pe'):
             data.lap_pe = data.lap_pe.detach().cpu()
         return data
 
 # ------------------------
-# Data loading
+# Safe batch_to_model_inputs
+# ------------------------
+
+def batch_to_model_inputs_safe(batch, model):
+    """Extract only tensors your model.forward expects."""
+    sig = inspect.signature(model.forward)
+    allowed_keys = sig.parameters.keys()
+    inputs = {k: getattr(batch, k) for k in allowed_keys if hasattr(batch, k)}
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    inputs = {k: v.to(device) if torch.is_tensor(v) else v for k, v in inputs.items()}
+    return inputs
+
+# ------------------------
+# Data loaders
 # ------------------------
 
 def load_data_w_pe(data_dir, splits=['train', 'validation'], batch_size=32, shuffle=True, k=16):
@@ -175,12 +186,12 @@ def load_data_w_pe(data_dir, splits=['train', 'validation'], batch_size=32, shuf
     for split in splits:
         dataset = HFDataset(hf_dataset[split], column="multimodal_graph", transform=transform)
 
-        # Custom collate_fn to move only needed tensors to GPU lazily
         def collate_fn(batch):
-            inputs = batch_to_model_inputs(batch)
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            inputs = {k: v.to(device) if torch.is_tensor(v) else v for k,v in inputs.items()}
-            return inputs
+            # batch is list of Data objects
+            from torch_geometric.data import Batch
+            batch_obj = Batch.from_data_list(batch)
+            # Filter only what model expects
+            return batch_to_model_inputs_safe(batch_obj, model)
 
         loader = DataLoader(
             dataset,
@@ -192,13 +203,13 @@ def load_data_w_pe(data_dir, splits=['train', 'validation'], batch_size=32, shuf
     return tuple(loaders)
 
 # ------------------------
-# Model setup
+# Model
 # ------------------------
 
 model = GraphGPSNet(
-    node_dim = 768 + 5,   # BERT/Beit + extra node features
-    edge_dim = 6,         # edge type one-hot
-    num_tasks = 3_000,    # number of VQA classes
+    node_dim = 768 + 5,
+    edge_dim = 6,
+    num_tasks = 3000,
     hidden_dim = 768,
     pe_dim = 16,
     num_layers = 5,
@@ -214,11 +225,10 @@ num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_g
 print(f"Total parameters: {num_params:,}, Trainable: {num_trainable_params:,}")
 
 # ------------------------
-# Data
+# Load data
 # ------------------------
 
 data_dir = '/home/yandex/MLWG2025/danielvolkov/datasets/VQA_mmg_BERT_BeiT_6fus_2tg/'
-
 train_dl, val_dl = load_data_w_pe(data_dir, batch_size=32)
 
 # ------------------------
@@ -226,7 +236,7 @@ train_dl, val_dl = load_data_w_pe(data_dir, batch_size=32)
 # ------------------------
 
 for input_batch in train_dl:
-    # input_batch is already GPU-ready via collate_fn
+    # input_batch is already GPU-ready and filtered
     res = model(**input_batch)
-    print(f'{res=}, {res.shape=}')
+    print(f"{res=}, {res.shape=}")
     break
