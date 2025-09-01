@@ -119,6 +119,57 @@ def build_cayley_graph(text_embeds: torch.Tensor,
 	return res
 
 
+def process_batch(batch):
+	questions = batch['question']
+	image_ids = batch['image_id']
+
+	# Embed question
+	q_embs, attn_mask = embed_text(questions)
+
+	# dedup while keeping map
+	id2img = {}
+	for idx, img_id in enumerate(image_ids):
+		if img_id not in id2img:
+			id2img[img_id] = batch['image'][idx].convert("RGB")
+
+	unique_embeds = embed_image(list(id2img.values()))
+
+	id_to_emb = {k: v for k, v in zip(id2img.keys(), unique_embeds)}
+	i_embs = torch.stack([id_to_emb[img_id] for img_id in image_ids])
+
+	# Build multimodal graphs
+	graphs = build_cayley_graph(text_embeds=q_embs,
+								image_embeds=i_embs,
+								attn_mask=attn_mask
+	)
+
+	batch['multimodal_graph'] = [data_to_dict(graph) for graph in graphs]
+
+	return batch
+
+
+def embed_text(texts: list[str]):
+    inputs = bert_tokenizer(texts, return_tensors="pt", padding=True).to('cuda')
+    with torch.no_grad():
+        outputs = bert(**inputs)
+    return outputs.last_hidden_state, inputs['attention_mask'].to('cuda')
+
+
+def embed_image(images: list[Image.Image]):
+    inputs = beit_processor(images, return_tensors="pt").to('cuda')
+    with torch.no_grad():
+        outputs = beit(**inputs)
+    return outputs.last_hidden_state[:, 1:, :]
+
+
+def data_to_dict(data):
+    """Convert PyTorch Geometric Data to Arrow/NumPy-friendly dict"""
+    return {
+        "x": data.x.cpu().numpy().astype("float32") if data.x is not None else None,
+        "edge_index": data.edge_index.cpu().numpy().astype("int64") if data.edge_index is not None else None,
+    }
+
+
 ################################
 ######## Demonstration #########
 ################################
