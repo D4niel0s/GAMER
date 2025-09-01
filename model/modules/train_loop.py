@@ -164,19 +164,28 @@ class HFDataset(Dataset):
 # Safe collate_fn
 # ------------------------
 
-def collate_fn_safe(batch, model):
+def collate_fn_no_ptr(batch):
     """
-    Convert list of Data objects into dict of tensors for the model,
-    filtering out all extra PyG Batch attributes like ptr.
+    Collate a list of Data objects into a dict for GraphGPSNet,
+    explicitly avoiding ptr and other PyG bookkeeping.
     """
-    # Create Batch object (for proper edge_index stacking)
+    from torch_geometric.data import Batch
+
+    # Only use fields your model actually expects
+    fields = ['x', 'edge_index', 'edge_attr', 'batch']
+
+    # Create PyG Batch to correctly stack edge_index, etc.
     batch_obj = Batch.from_data_list(batch)
 
-    # Explicit whitelist of keys your model.forward expects
-    model_keys = ['x', 'edge_index', 'edge_attr', 'batch']
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    batch_dict = {}
 
-    return {k: getattr(batch_obj, k).to(device) for k in model_keys if hasattr(batch_obj, k)}
+    for f in fields:
+        if hasattr(batch_obj, f):
+            batch_dict[f] = getattr(batch_obj, f).to(device)
+
+    return batch_dict
+
 
 # ------------------------
 # Data loaders
@@ -194,7 +203,7 @@ def load_data_w_pe(data_dir, splits=['train', 'validation'], batch_size=32, shuf
             dataset,
             batch_size=batch_size,
             shuffle=shuffle,
-            collate_fn=lambda batch: collate_fn_safe(batch, model)
+            collate_fn=lambda batch: collate_fn_no_ptr(batch)
         )
         loaders.append(loader)
     return tuple(loaders)
