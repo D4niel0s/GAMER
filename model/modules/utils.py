@@ -1,11 +1,10 @@
-import torch, torch.nn as nn
+import torch, torch.nn as nn, numpy as np, matplotlib.pyplot as plt, networkx as nx, torch.nn.functional as F
 
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from torch_geometric.data import Data, Batch
 from torch_geometric.nn import Linear
 from typing import Iterable
 from tqdm import tqdm
-import torch, matplotlib.pyplot as plt, networkx as nx
 
 
 # ---- ML utils ---- #
@@ -122,6 +121,43 @@ def batch_to_model_inputs(batch: Batch):
         edge_attr = getattr(batch, "edge_attr", None),  # optional edge features
         lap_pe = getattr(batch, "lap_pe", None),   # optional LapPE
     )
+
+
+def soft_cross_entropy(pred, soft_targets):
+    log_probs = F.log_softmax(pred, dim=1)
+    return (-(soft_targets * log_probs).sum(dim=1)).mean()
+
+
+
+
+# TODO: review these two functions
+
+def vqa_answers_to_soft_label(answers, answer2idx):
+    label = np.zeros(len(answer2idx), dtype=np.float32)
+    for ans_dict in answers:
+        ans = ans_dict['answer']
+        if ans in answer2idx:
+            label[answer2idx[ans]] += 1.0 / len(answers)
+    return label
+
+
+def vqa_score_from_soft_targets(logits, soft_targets):
+    """
+    logits: [B, C]
+    soft_targets: [B, C] (counts/10 or probabilities)
+    Official VQA scoring for a predicted answer p: min(1, count(p)/3).
+    If soft_targets is counts/10, count(p) = soft_targets[p] * 10.
+    Thus score = clamp(soft_targets[i_pred] * 10 / 3, 0, 1)
+    Returns mean score over batch.
+    """
+    preds = logits.argmax(dim=1)           # [B]
+    idx = preds.unsqueeze(1)
+    # gather soft_targets at predicted indices
+    pred_soft = soft_targets.gather(1, idx).squeeze(1)  # [B]
+    scores = torch.clamp(pred_soft * 10.0 / 3.0, max=1.0)
+    return scores.mean().item()
+
+
 
 
 # Cayley Utils
