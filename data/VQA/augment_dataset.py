@@ -6,6 +6,7 @@ from transformers import (
     BertTokenizer, BertModel,
     BeitImageProcessor, BeitModel
 )
+from PIL import Image
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -33,7 +34,10 @@ def encode_questions(questions):
 
 @torch.no_grad()
 def encode_images(images):
-    inputs = beit_processor(images=images, return_tensors="pt").to(device)
+    # Ensure all images are RGB
+    rgb_images = [img.convert("RGB") if isinstance(img, Image.Image) else img for img in images]
+    
+    inputs = beit_processor(images=rgb_images, return_tensors="pt").to(device)
     outputs = beit_model(**inputs, output_hidden_states=True)
     return outputs.last_hidden_state[:, 1:, :].cpu().numpy()  # contextualized patch embeddings
 
