@@ -11,7 +11,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # -------------------------
 # Load dataset and BEiT
 # -------------------------
-dataset = load_dataset("pingzhili/vqa_v2")
+dataset = load_dataset("pingzhili/vqa_v2", features={"image": Image(decode=False)})
 
 beit_processor = BeitImageProcessor.from_pretrained('microsoft/beit-base-patch16-224')
 beit_model = BeitModel.from_pretrained('microsoft/beit-base-patch16-224', use_safetensors=True).eval().cuda()
@@ -55,7 +55,7 @@ batch_size = 32
 
 for i in tqdm(range(0, len(img_ids), batch_size), desc="Computing BEiT embeddings"):
     batch_ids = img_ids[i:i+batch_size]
-    images = [id2img[id].convert("RGB") for id in batch_ids]
+    images = [Image.open(id2img[id]).convert("RGB") for id in batch_ids]
 
     embeds = embed_batch(images)  # (B, P, D)
 
