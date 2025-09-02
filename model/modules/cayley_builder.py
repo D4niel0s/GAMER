@@ -82,7 +82,7 @@ def build_cayley_graph(text_embeds: torch.Tensor,
     
 	res = []
 	for i in range(text_embeds.shape[0]): # For each sample in batch, build Cayley Graph with embeddings.
-		text_emb = text_embeds[i][attn_mask[i].bool()]
+		text_emb = text_embeds[i][attn_mask[i].bool()] if attn_mask is not None else text_embeds[i]
 		img_emb = image_embeds[i]
 
 		feats = torch.cat([text_emb, img_emb], dim=0)
