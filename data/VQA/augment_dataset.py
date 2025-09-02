@@ -1,7 +1,11 @@
-import torch, numpy as np
+import torch
 
 from transformers import BertTokenizer, BertModel
-from datasets import load_dataset, Array2D
+from datasets import load_dataset
+from transformers import (
+    BertTokenizer, BertModel,
+    BeitImageProcessor, BeitModel
+)
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -15,49 +19,47 @@ dataset = load_dataset("pingzhili/vqa_v2")
 bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 bert_model = BertModel.from_pretrained("bert-base-uncased").eval().cuda()
 
+beit_processor = BeitImageProcessor.from_pretrained('microsoft/beit-base-patch16-224')
+beit_model = BeitModel.from_pretrained('microsoft/beit-base-patch16-224', use_safetensors=True).eval().to(device)
 
-# -------------------------
-# Attach question + image embeddings to dataset
-# -------------------------
+# =========================
+# Batched embedding functions
+# =========================
+@torch.no_grad()
+def encode_questions(questions):
+    inputs = bert_tokenizer(questions, return_tensors="pt", padding=True).to(device)
+    outputs = bert_model(**inputs)
+    return outputs.last_hidden_state.cpu().numpy()  # CLS token
 
-# Reload dict from npz
-data = np.load("VQA_img_beit_embeds.npz", allow_pickle=True)
-imgid2emb = {k: data[k] for k in data.files}
+@torch.no_grad()
+def encode_images(images):
+    inputs = beit_processor(images=images, return_tensors="pt").to(device)
+    outputs = beit_model(**inputs, output_hidden_states=True)
+    return outputs.last_hidden_state[:, 1:, :].cpu().numpy()  # contextualized patch embeddings
 
 
-new_features = dataset["train"].features.copy()
-new_features["question_emb"] = Array2D(dtype="float32", shape=(None, d_embed))
-new_features["image_emb"] = Array2D(dtype="float32", shape=(None, d_embed))
-
-
-
-def embed_text(texts: list[str]):
-    inputs = bert_tokenizer(texts, return_tensors="pt", padding=True).to('cuda')
-    with torch.no_grad():
-        outputs = bert_model(**inputs)
-    return outputs.last_hidden_state.cpu().numpy()
-
+# =========================
+# Map function with batching
+# =========================
 def process_batch(batch):
-    questions = batch['question']
-    image_ids = batch['image_id']
+    # batch["question"] is a list of strings
+    q_emb = encode_questions(batch["question"])
+    i_emb = encode_images(batch["image"])
+    return {
+        "question_embedding": [arr for arr in q_emb],
+        "image_embedding": [arr for arr in i_emb],
+    }
 
-    # Text → all token embeddings
-    text_embs = embed_text(questions)  # (B, T, D)
-
-    # Image → lookup from dict
-    img_embs = [imgid2emb[str(img_id)] for img_id in image_ids] 
-
-    batch['question_emb'] = list(text_embs)
-    batch['image_emb'] = img_embs
-    return batch
-
-dataset = dataset.map(
+# =========================
+# Apply batched processing
+# =========================
+vqa_emb = dataset.map(
     process_batch,
     batched=True,
-    batch_size=32,
-    features=new_features,
-    desc='Adding question + image embeddings'
+    batch_size=16,   # adjust for your VRAM
+    remove_columns=[],
 )
 
-dataset.save_to_disk('vqa_with_embeds_dedup')
-print('Saved enriched dataset to vqa_with_embeds_dedup')
+# Save to disk
+vqa_emb.save_to_disk("vqa_v2_with_embeddings")
+print("✅ Done! Dataset saved with batched BERT & BEiT embeddings.")
