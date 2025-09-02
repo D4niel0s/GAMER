@@ -20,12 +20,23 @@ beit_model = BeitModel.from_pretrained('microsoft/beit-base-patch16-224', use_sa
 # -------------------------
 # Deduplicate images
 # -------------------------
-unique_imgs = {}
+# dedup with ids
+unique_ids = set()
 for split in dataset.keys():
-    for img, img_id in tqdm(zip(dataset[split]["image"], dataset[split]["image_id"]), desc=f"Deduplicating images in {split}", total=len(dataset[split])):
-        if img_id not in unique_imgs:
-            unique_imgs[img_id] = img
-print(f"Unique images: {len(unique_imgs)}")
+    unique_ids.update(dataset[split]["image_id"])
+print(f"Unique images: {len(unique_ids)}")
+
+
+# Build mapping image_id → image (once per unique id)
+id2img = {}
+for split in dataset.keys():
+    for row in tqdm(dataset[split], desc=f"Building id2img from {split}"):
+        img_id = row["image_id"]
+        if img_id not in id2img:
+            id2img[img_id] = row["image"]   # PIL.Image
+        if len(id2img) == len(unique_ids):
+            break
+print(f"Unique mapped ids: {len(id2img)}")
 
 
 # -------------------------
@@ -39,12 +50,12 @@ def embed_batch(images: list[Image.Image]):
 
 
 imgid2emb = {}
-img_ids = list(unique_imgs.keys())
+img_ids = list(id2img.keys())
 batch_size = 32
 
 for i in tqdm(range(0, len(img_ids), batch_size), desc="Computing BEiT embeddings"):
     batch_ids = img_ids[i:i+batch_size]
-    images = [unique_imgs[id].convert("RGB") for id in batch_ids]
+    images = [id2img[id].convert("RGB") for id in batch_ids]
 
     embeds = embed_batch(images)  # (B, P, D)
 
