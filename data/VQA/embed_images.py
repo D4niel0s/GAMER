@@ -1,70 +1,59 @@
-import torch, numpy as np
-
+import torch
 from transformers import BeitImageProcessor, BeitModel
-from datasets import load_dataset, Image as DSImage
-from tqdm import tqdm
-from PIL import Image
+from datasets import load_dataset, Dataset, Image as DSImage
+from PIL import Image as PILImage
+import pandas as pd
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-
 # -------------------------
-# Load dataset and BEiT
+# Load VQA dataset and BEiT
 # -------------------------
-dataset = load_dataset("pingzhili/vqa_v2", features={"image": DSImage(decode=False)})
+dataset = load_dataset("pingzhili/vqa_v2")
+dataset = dataset.cast_column("image", DSImage(decode=False))  # keep paths only
 
 beit_processor = BeitImageProcessor.from_pretrained('microsoft/beit-base-patch16-224')
-beit_model = BeitModel.from_pretrained('microsoft/beit-base-patch16-224', use_safetensors=True).eval().cuda()
-
+beit_model = BeitModel.from_pretrained('microsoft/beit-base-patch16-224', use_safetensors=True).eval().to(device)
 
 # -------------------------
-# Deduplicate images
+# Deduplicate images across all splits using Pandas
 # -------------------------
-# dedup with ids
-unique_ids = set()
+dfs = []
 for split in dataset.keys():
-    unique_ids.update(dataset[split]["image_id"])
-print(f"Unique images: {len(unique_ids)}")
+    print('Deduplicating split:', split)
+    df = dataset[split].to_pandas()
+    df = df.drop_duplicates(subset="image_id")
+    dfs.append(df)
 
+# Concatenate splits and deduplicate globally
+df_all = pd.concat(dfs, ignore_index=True).drop_duplicates(subset="image_id")
+print(f"Total unique images across all splits: {len(df_all)}")
 
-# Build mapping image_id → image (once per unique id)
-id2img = {}
-for split in dataset.keys():
-    for row in tqdm(dataset[split], desc=f"Building id2img from {split}"):
-        img_id = row["image_id"]
-        if img_id not in id2img:
-            id2img[img_id] = row["image"]   # PIL.Image
-        if len(id2img) == len(unique_ids):
-            break
-print(f"Unique mapped ids: {len(id2img)}")
-
+# Convert back to HF Dataset
+unique_img_ds = Dataset.from_pandas(df_all, preserve_index=False)
 
 # -------------------------
-# Compute BEiT embeddings once
+# Embed images in batches
 # -------------------------
-def embed_batch(images: list[Image.Image]):
-    inputs = beit_processor(images, return_tensors="pt").to('cuda')
+def embed_images(batch):
+    images = [PILImage.open(p).convert("RGB") for p in batch["image"]]
+    inputs = beit_processor(images, return_tensors="pt").to(device)
     with torch.no_grad():
         outputs = beit_model(**inputs)
-    return outputs.last_hidden_state[:, 1:, :].cpu().numpy() # Throw CLS token
+    # drop CLS token, store patch embeddings
+    batch["image_emb"] = [emb.cpu().numpy() for emb in outputs.last_hidden_state[:, 1:, :]]
+    return batch
 
-
-imgid2emb = {}
-img_ids = list(id2img.keys())
 batch_size = 32
-
-for i in tqdm(range(0, len(img_ids), batch_size), desc="Computing BEiT embeddings"):
-    batch_ids = img_ids[i:i+batch_size]
-    images = [Image.open(id2img[id]).convert("RGB") for id in batch_ids]
-
-    embeds = embed_batch(images)  # (B, P, D)
-
-    for id, e in zip(batch_ids, embeds):
-        imgid2emb[str(id)] = e   # keys must be str for npz
-
+unique_img_ds = unique_img_ds.map(
+    embed_images,
+    batched=True,
+    batch_size=batch_size,
+    remove_columns=["image"]
+)
 
 # -------------------------
-# Save all image embeddings to NPZ
+# Save the dataset
 # -------------------------
-np.savez_compressed("VQA_img_beit_embeds.npz", **imgid2emb)
-print("Saved all BEiT embeddings!")
+unique_img_ds.save_to_disk("VQA_img_beit_embeds_ds")
+print("Saved all BEiT embeddings as HF dataset: VQA_img_beit_embeds_ds")
