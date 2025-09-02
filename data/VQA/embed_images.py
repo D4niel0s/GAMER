@@ -1,8 +1,9 @@
 import torch
 from transformers import BeitImageProcessor, BeitModel
-from datasets import load_dataset, Dataset, Image as DSImage
+from datasets import load_dataset, concatenate_datasets
+from datasets import Image as DSImage
 from PIL import Image as PILImage
-import pandas as pd
+from tqdm import tqdm
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -10,27 +11,24 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # Load VQA dataset and BEiT
 # -------------------------
 dataset = load_dataset("pingzhili/vqa_v2")
-dataset = dataset.cast_column("image", DSImage(decode=False))  # keep paths only
+
+# Keep image column as paths only to save memory
+dataset = dataset.cast_column("image", DSImage(decode=False))
 
 beit_processor = BeitImageProcessor.from_pretrained('microsoft/beit-base-patch16-224')
 beit_model = BeitModel.from_pretrained('microsoft/beit-base-patch16-224', use_safetensors=True).eval().to(device)
 
 # -------------------------
-# Deduplicate images across all splits using Pandas
+# Concatenate splits and deduplicate images
 # -------------------------
-dfs = []
-for split in dataset.keys():
-    print('Deduplicating split:', split)
-    df = dataset[split].to_pandas()
-    df = df.drop_duplicates(subset="image_id")
-    dfs.append(df)
+all_ds = concatenate_datasets([dataset[split] for split in dataset.keys()])
+print(f"Total images before deduplication: {len(all_ds)}")
 
-# Concatenate splits and deduplicate globally
-df_all = pd.concat(dfs, ignore_index=True).drop_duplicates(subset="image_id")
-print(f"Total unique images across all splits: {len(df_all)}")
+# Keep only one row per unique image_id
+unique_img_ds = all_ds.unique("image_id")
+print(f"Unique images across all splits: {len(unique_img_ds)}")
 
-# Convert back to HF Dataset
-unique_img_ds = Dataset.from_pandas(df_all, preserve_index=False)
+print(f'{unique_img_ds=}')
 
 # -------------------------
 # Embed images in batches
@@ -40,7 +38,7 @@ def embed_images(batch):
     inputs = beit_processor(images, return_tensors="pt").to(device)
     with torch.no_grad():
         outputs = beit_model(**inputs)
-    # drop CLS token, store patch embeddings
+    # Drop CLS token, store patch embeddings
     batch["image_emb"] = [emb.cpu().numpy() for emb in outputs.last_hidden_state[:, 1:, :]]
     return batch
 
