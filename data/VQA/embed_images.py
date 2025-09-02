@@ -1,7 +1,7 @@
 import torch, numpy as np
 
 from transformers import BeitImageProcessor, BeitModel
-from datasets import load_dataset
+from datasets import load_dataset, Image as DSImage
 from tqdm import tqdm
 from PIL import Image
 
@@ -11,7 +11,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # -------------------------
 # Load dataset and BEiT
 # -------------------------
-dataset = load_dataset("pingzhili/vqa_v2", features={"image": Image(decode=False)})
+dataset = load_dataset("pingzhili/vqa_v2", features={"image": DSImage(decode=False)})
 
 beit_processor = BeitImageProcessor.from_pretrained('microsoft/beit-base-patch16-224')
 beit_model = BeitModel.from_pretrained('microsoft/beit-base-patch16-224', use_safetensors=True).eval().cuda()
