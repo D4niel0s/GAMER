@@ -1,7 +1,6 @@
 import torch
 from transformers import BeitImageProcessor, BeitModel
-from datasets import load_dataset, concatenate_datasets
-from datasets import Image as DSImage
+from datasets import load_dataset, concatenate_datasets, Dataset, Image as DSImage
 from PIL import Image as PILImage
 from tqdm import tqdm
 
@@ -11,24 +10,34 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # Load VQA dataset and BEiT
 # -------------------------
 dataset = load_dataset("pingzhili/vqa_v2")
-
-# Keep image column as paths only to save memory
 dataset = dataset.cast_column("image", DSImage(decode=False))
 
 beit_processor = BeitImageProcessor.from_pretrained('microsoft/beit-base-patch16-224')
 beit_model = BeitModel.from_pretrained('microsoft/beit-base-patch16-224', use_safetensors=True).eval().to(device)
 
 # -------------------------
-# Concatenate splits and deduplicate images
+# Concatenate splits
 # -------------------------
 all_ds = concatenate_datasets([dataset[split] for split in dataset.keys()])
 print(f"Total images before deduplication: {len(all_ds)}")
 
-# Keep only one row per unique image_id
-unique_img_ds = all_ds.unique("image_id")
-print(f"Unique images across all splits: {len(unique_img_ds)}")
+# -------------------------
+# Deduplicate images using map + set
+# -------------------------
+seen = set()
+def keep_first(example):
+    img_id = example["image_id"]
+    if img_id in seen:
+        return None
+    
+    seen.add(img_id)
+    return example
 
-print(f'{unique_img_ds=}')
+unique_img_ds = all_ds.map(keep_first, batched=False)
+# Filter out None entries
+unique_img_ds = unique_img_ds.filter(lambda x: x is not None)
+
+print(f"Unique images across all splits: {len(unique_img_ds)}")
 
 # -------------------------
 # Embed images in batches
