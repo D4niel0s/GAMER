@@ -4,6 +4,7 @@ from typing import Optional, Literal
 from torch_geometric.nn import (
     GPSConv,
     GINEConv,
+    GINConv,
     global_mean_pool,
     LayerNorm,
 )
@@ -47,8 +48,19 @@ class GraphGPSNet(nn.Module):
         self.layers = nn.ModuleList()
         for _ in range(num_layers):
 
-            local_gnn = GINEConv(mlp(hidden_dim, hidden_dim, hidden_dim, num_hidden_layers=1, dropout=dropout),
-                                    train_eps=True, edge_dim=hidden_dim if edge_dim > 0 else None)
+            if edge_dim > 0:
+                local_gnn = GINEConv(
+                    mlp(hidden_dim, hidden_dim, hidden_dim, num_hidden_layers=1, dropout=dropout),
+                    train_eps=True,
+                    edge_dim=hidden_dim
+                )
+            else:
+                local_gnn = GINConv(
+                    mlp(hidden_dim, hidden_dim, hidden_dim, num_hidden_layers=1, dropout=dropout),
+                    train_eps=True
+                )
+
+
             block = GPSConv(
                 channels=hidden_dim,
                 conv=local_gnn,     # local message passing
