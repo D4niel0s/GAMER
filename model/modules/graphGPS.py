@@ -112,7 +112,11 @@ class GraphGPSNet(nn.Module):
         
         # GPS layers (+ residual after each)
         for layer in self.layers:
-            h = layer(x, edge_index, batch=batch, edge_attr=edge_attr)
+            if self.edge_dim > 0:
+                h = layer(x, edge_index, batch=batch, edge_attr=edge_attr)  # GINE
+            else:
+                h = layer(x, edge_index, batch=batch)                       # GIN
+
             x = x + h
             
         # postnet + residual
