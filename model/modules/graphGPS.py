@@ -8,7 +8,7 @@ from torch_geometric.nn import (
     LayerNorm,
 )
 
-from utils import mlp
+from .utils import mlp
 
 
 
@@ -100,9 +100,12 @@ class GraphGPSNet(nn.Module):
         
         # GPS layers (+ residual after each)
         for layer in self.layers:
-            x += layer(x, edge_index, batch=batch, edge_attr=edge_attr)
-
-        x += self.postnet(x) # postnet + residual
+            h = layer(x, edge_index, batch=batch, edge_attr=edge_attr)
+            x = x + h
+            
+        # postnet + residual
+        h = self.postnet(x)
+        x = x + h
 
         # Graph-level pooling
         g = global_mean_pool(x, batch)

@@ -1,4 +1,4 @@
-import torch, torch.nn.functional as F, numpy as np, math, json, wandb, os, time
+import torch, torch.nn.functional as F, numpy as np, math, json, wandb, os, time, sys
 
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -11,8 +11,10 @@ from tqdm import tqdm
 
 from modules.utils import soft_cross_entropy,vqa_score_from_soft_targets
 from modules.mmg_builder import build_multimodal_graph
-from data.VQA.dataset import VQAGraphsDataset
 from modules.graphGPS import GraphGPSNet
+
+sys.path.append('..')
+from data.VQA.dataset import VQAGraphsDataset
 
 
 # -------------------------------- #
@@ -208,7 +210,7 @@ try:
             inputs = move_batch_to_device(inputs, device, non_blocking=pin_memory)
             labels = labels.to(device, non_blocking=pin_memory)
 
-            with autocast(device=device, enabled=use_amp):
+            with autocast(device_type='cuda', enabled=use_amp):
                 logits = model(**inputs)                # [B, C]
                 loss = soft_cross_entropy(logits, labels)
                 loss = loss / grad_accum_steps
@@ -251,7 +253,7 @@ try:
                             val_inputs = move_batch_to_device(val_inputs, device, non_blocking=pin_memory)
                             val_labels = val_labels.to(device, non_blocking=pin_memory)
 
-                            with autocast(enabled=use_amp):
+                            with autocast(device_type='cuda', enabled=use_amp):
                                 val_logits = model(**val_inputs)
                                 val_loss += soft_cross_entropy(val_logits, val_labels).item()
                                 val_vqa_acc += vqa_score_from_soft_targets(val_logits, val_labels)

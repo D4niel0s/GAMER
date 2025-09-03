@@ -1,10 +1,10 @@
 import torch
 from torch_geometric.data import Data
-from txt2graph import text_to_graph
-from img2graph import image_to_graph
+from .txt2graph import text_to_graph
+from .img2graph import image_to_graph
 
 
-from utils import union_graph, add_nodes
+from .utils import union_graph, add_nodes
 
 
 def build_multimodal_graph(text_embeds: torch.Tensor,
