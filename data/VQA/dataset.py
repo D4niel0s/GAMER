@@ -19,16 +19,16 @@ class VQAGraphsDataset(Dataset):
     
     def __getitem__(self, idx):
         item = self.dataset[idx]
-        i_embed = item['image_embedding']
-        q_embed = item['question_embedding']
+        i_embed = torch.tensor(item['image_embedding']).unsqueeze(0)
+        q_embed = torch.tensor(item['question_embedding']).unsqueeze(0)
 
         if self.graph_builder is not None:
             graph = self.graph_builder(
-                text_embeds = q_embed.unsqueeze(0),
-                image_embeds = i_embed.unsqueeze(0),
-                attn_mask = torch.ones((1,q_embed.shape[0])),
+                text_embeds = q_embed,
+                image_embeds = i_embed,
+                attn_mask = torch.ones(1,q_embed.shape[1]),
                 **self.graph_building_args
-            )
+            )[0]        # this is a list of length one - select the data object
         else:
             graph = None
 
