@@ -22,9 +22,9 @@ from data.VQA.dataset import VQAGraphsDataset
 # -------------------------------- #
 
 # Paths
-VQA_W_EMBED_PATH = ''
-ANSWER_2_IDX_JSON_PATH = ''
-checkpoint_dir = "./checkpoints"
+VQA_W_EMBED_PATH = '/home/yandex/MLWG2025/danielvolkov/datasets/VQA_w_embed'
+ANSWER_2_IDX_JSON_PATH = '/home/yandex/MLWG2025/danielvolkov/Documents/GAMER/data/VQA/answer2idx.json'
+checkpoint_dir = "../checkpoints"
 resume_checkpoint = None  # path to resume
 
 # Training parameters
