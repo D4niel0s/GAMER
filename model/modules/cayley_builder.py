@@ -74,7 +74,8 @@ def cayley_graph_size(n: int) -> int:
 
 def build_cayley_graph(text_embeds: torch.Tensor,
                     image_embeds: torch.Tensor,
-                    attn_mask: torch.Tensor
+                    attn_mask: torch.Tensor,
+                    **kwargs # allow extra trash
                     ) -> list[Data]:
      
 	if text_embeds.shape[0] != attn_mask.shape[0]:
