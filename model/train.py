@@ -25,6 +25,7 @@ def main():
     # === Config / Hyperparameters === #
     # -------------------------------- #
     cfg = vars(get_parser().parse_args())
+    print(f'Config:\n{cfg}')
 
     # Paths
     VQA_W_EMBED_PATH = cfg['dataset_path']
