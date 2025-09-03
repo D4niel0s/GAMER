@@ -27,6 +27,8 @@ ANSWER_2_IDX_JSON_PATH = '/home/yandex/MLWG2025/danielvolkov/Documents/GAMER/dat
 checkpoint_dir = "../checkpoints"
 resume_checkpoint = None  # path to resume
 
+os.makedirs(checkpoint_dir, exist_ok=True)
+
 # Training parameters
 num_epochs = 10
 batch_size = 16
