@@ -24,7 +24,7 @@ from data.VQA.dataset import VQAGraphsDataset
 # Paths
 VQA_W_EMBED_PATH = '/home/yandex/MLWG2025/danielvolkov/datasets/VQA_w_embed'
 ANSWER_2_IDX_JSON_PATH = '/home/yandex/MLWG2025/danielvolkov/Documents/GAMER/data/VQA/answer2idx.json'
-checkpoint_dir = "../checkpoints"
+checkpoint_dir = "/home/yandex/MLWG2025/danielvolkov/checkpoints"
 resume_checkpoint = None  # path to resume
 
 os.makedirs(checkpoint_dir, exist_ok=True)
@@ -229,8 +229,8 @@ try:
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                 scaler.step(optimizer)
                 scaler.update()
-                optimizer.zero_grad()
                 scheduler.step()
+                optimizer.zero_grad()
                 global_update += 1
 
                 # logging
@@ -308,8 +308,8 @@ try:
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             scaler.step(optimizer)
             scaler.update()
-            optimizer.zero_grad()
             scheduler.step()
+            optimizer.zero_grad()
             global_update += 1
             print("Flushed leftover gradients at epoch end (performed final optimizer.step())")
 
