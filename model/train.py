@@ -13,7 +13,7 @@ from modules.utils import soft_cross_entropy,vqa_score_from_soft_targets
 from modules.mmg_builder import build_multimodal_graph
 from modules.cayley_builder import build_cayley_graph
 from modules.graphGPS import GraphGPSNet
-from .config import get_parser
+from config import get_parser
 
 sys.path.append('..')
 from data.VQA.dataset import VQAGraphsDataset

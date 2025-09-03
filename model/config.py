@@ -33,7 +33,7 @@ def get_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--resume-checkpoint",
-        type=str | None,
+        type=str,
         default=None,
         help="Path to checkpoint for which training will be resumed. None to start fresh training.",
     )
@@ -74,7 +74,7 @@ def get_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--val-batches",
-        type=int | None,
+        type=int,
         default=100,
         help="Maximum number of batches to validate over. None to do full validation.",
     )
