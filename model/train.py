@@ -40,9 +40,9 @@ persistent_workers = True           # supported only in modern PyTorch
 grad_accum_steps = 2                # 1 to disable
 max_grad_norm = 1.0
 
-val_interval_updates = 500          # validate every N optimizer updates
-val_batches = 1000                # Partial validation - None to do full validation
-checkpoint_interval_updates = 500  # checkpoint every N optimizer updates
+val_interval_updates = 100          # validate every N optimizer updates
+val_batches = 100                # Partial validation - None to do full validation
+checkpoint_interval_updates = 100  # checkpoint every N optimizer updates
 log_every_n_updates = 10
 save_best = True
 use_amp = True                      # set False to disable mixed precision
