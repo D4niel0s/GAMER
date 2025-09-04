@@ -3,7 +3,6 @@ import torch, torch.nn as nn, math, json, wandb, os, time, sys
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from transformers import get_cosine_schedule_with_warmup
 from torch.amp.autocast_mode import autocast
-from torch.amp.grad_scaler import GradScaler
 from torch.utils.data import DataLoader
 from datasets import load_from_disk
 from pprint import pprint
@@ -169,14 +168,12 @@ def main():
         num_training_steps=total_updates
     )
 
-    scaler = GradScaler(device=device, enabled=use_amp)
-
     criterion = nn.BCEWithLogitsLoss()
 
 
 
     # ----------------------------------------------------------- #
-    # === Load checkpoint (and opt + sched + amp state dicts) === #
+    # === Load checkpoint (and opt + sched state dicts) === #
     # ----------------------------------------------------------- #
 
     start_epoch = 0
@@ -188,7 +185,6 @@ def main():
         model.load_state_dict(ckpt['model'])
         optimizer.load_state_dict(ckpt['optimizer'])
         scheduler.load_state_dict(ckpt['scheduler'])
-        scaler.load_state_dict(ckpt.get('scaler', {}))
         start_epoch = ckpt['epoch'] + 1
         global_update = ckpt['global_update']
         best_val_score = ckpt.get('best_val_score', best_val_score)
@@ -229,22 +225,20 @@ def main():
                 inputs = move_batch_to_device(inputs, device, non_blocking=pin_memory)
                 labels = labels.to(device, non_blocking=pin_memory)
 
-                with autocast(device_type='cuda', enabled=use_amp):
+                with autocast(device_type='cuda', dtype=torch.bfloat16, enabled=use_amp):
                     logits = model(**inputs)                # [B, C]
                     loss = criterion(logits, labels)
                     loss = loss / grad_accum_steps
 
-                scaler.scale(loss).backward()
+                loss.backward()
                 epoch_loss += loss.item() * grad_accum_steps
                 epoch_steps += 1
 
                 # only step optimizer on accumulation boundary
                 if (step + 1) % grad_accum_steps == 0:
-                    # unscale + clip + step
-                    scaler.unscale_(optimizer)
+                    # clip + step
                     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-                    scaler.step(optimizer)
-                    scaler.update()
+                    optimizer.step()
                     scheduler.step()
                     optimizer.zero_grad()
                     global_update += 1
@@ -276,7 +270,7 @@ def main():
                                 val_inputs = move_batch_to_device(val_inputs, device, non_blocking=pin_memory)
                                 val_labels = val_labels.to(device, non_blocking=pin_memory)
 
-                                with autocast(device_type='cuda', enabled=use_amp):
+                                with autocast(device_type='cuda', dtype=torch.bfloat16, enabled=use_amp):
                                     val_logits = model(**val_inputs)
                                     val_loss += criterion(val_logits, val_labels).item()
                                     val_vqa_acc += vqa_score_from_soft_targets(val_logits, val_labels)
@@ -294,7 +288,6 @@ def main():
                                 'model': model.state_dict(),
                                 'optimizer': optimizer.state_dict(),
                                 'scheduler': scheduler.state_dict(),
-                                'scaler': scaler.state_dict() if use_amp else None,
                                 'epoch': epoch,
                                 'global_update': global_update,
                                 'best_val_score': best_val_score
@@ -308,7 +301,6 @@ def main():
                             'model': model.state_dict(),
                             'optimizer': optimizer.state_dict(),
                             'scheduler': scheduler.state_dict(),
-                            'scaler': scaler.state_dict() if use_amp else None,
                             'epoch': epoch,
                             'global_update': global_update,
                             'best_val_score': best_val_score
@@ -321,10 +313,8 @@ def main():
 
             # if leftover gradients because dataloader ended not divisible by grad_accum_steps:
             if (step + 1) % grad_accum_steps != 0:
-                scaler.unscale_(optimizer)
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-                scaler.step(optimizer)
-                scaler.update()
+                optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
                 global_update += 1
@@ -342,7 +332,6 @@ def main():
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'scheduler': scheduler.state_dict(),
-            'scaler': scaler.state_dict() if use_amp else None,
             'epoch': epoch,
             'global_update': global_update,
             'best_val_score': best_val_score
