@@ -207,7 +207,8 @@ def main():
     # === WandB init ===
     wandb.init(project="GAMER", config=dict(
         dataset = "VQA v2",
-        model = "GAMER GraphGPS",
+        model_name = "GAMER GraphGPS",
+        model_config = model_conf,
         **cfg
     ))
 
