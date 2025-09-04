@@ -1,4 +1,4 @@
-import torch, math, json, wandb, os, time, sys
+import torch, torch.nn as nn, math, json, wandb, os, time, sys
 
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -9,9 +9,9 @@ from datasets import load_from_disk
 from torch import optim
 from tqdm import tqdm
 
-from modules.utils import soft_cross_entropy,vqa_score_from_soft_targets
 from modules.mmg_builder import build_multimodal_graph
 from modules.cayley_builder import build_cayley_graph
+from modules.utils import vqa_score_from_soft_targets
 from modules.graphGPS import GraphGPSNet
 from config import get_parser
 
@@ -125,9 +125,9 @@ def main():
 
 
 
-    # ------------------------------------- #
-    # === Model / Optimizer / Scheduler === #
-    # ------------------------------------- #
+    # ------------------------------------------------- #
+    # === Model / Optimizer / Scheduler / Criterion === #
+    # ------------------------------------------------- #
 
     model = GraphGPSNet(
         node_dim = 768 + 5,         # 768 is BERT/BeiT embeds, 5 extra feats are node type one-hots
@@ -154,9 +154,9 @@ def main():
     total_updates = math.ceil(len(train_loader) * num_epochs / grad_accum_steps)
     scheduler = CosineAnnealingLR(optimizer, T_max=total_updates)
 
-
     scaler = GradScaler(device=device, enabled=use_amp)
 
+    criterion = nn.BCEWithLogitsLoss()
 
 
 
@@ -215,7 +215,7 @@ def main():
 
                 with autocast(device_type='cuda', enabled=use_amp):
                     logits = model(**inputs)                # [B, C]
-                    loss = soft_cross_entropy(logits, labels)
+                    loss = criterion(logits, labels)
                     loss = loss / grad_accum_steps
 
                 scaler.scale(loss).backward()
@@ -262,7 +262,7 @@ def main():
 
                                 with autocast(device_type='cuda', enabled=use_amp):
                                     val_logits = model(**val_inputs)
-                                    val_loss += soft_cross_entropy(val_logits, val_labels).item()
+                                    val_loss += criterion(val_logits, val_labels).item()
                                     val_vqa_acc += vqa_score_from_soft_targets(val_logits, val_labels)
                                     val_steps += 1
                         val_loss = val_loss / max(1, val_steps)

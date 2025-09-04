@@ -3,6 +3,7 @@ import torch, torch.nn as nn, numpy as np, matplotlib.pyplot as plt, networkx as
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from torch_geometric.data import Data, Batch
 from torch_geometric.nn import Linear
+from collections import Counter
 from typing import Iterable
 from tqdm import tqdm
 
@@ -123,38 +124,46 @@ def batch_to_model_inputs(batch: Batch):
     )
 
 
-def soft_cross_entropy(pred, soft_targets):
-    log_probs = F.log_softmax(pred, dim=1)
-    return (-(soft_targets * log_probs).sum(dim=1)).mean()
+def vqa_answers_to_soft_label(answers, ans2idx):
+    """
+    Convert VQA answers into a soft target vector.
 
+    Args:
+        answers (list[dict]): list of dicts with at least an "answer" field
+        ans2idx (dict): mapping from answer string -> class index
 
+    Returns:
+        torch.FloatTensor: (len(ans2idx),) soft target vector
+    """
 
+    target = torch.zeros(len(ans2idx), dtype=torch.float32)
 
-# TODO: review these two functions
+    # Count how many annotators gave each answer
+    counts = Counter([a["answer"] for a in answers])
 
-def vqa_answers_to_soft_label(answers, answer2idx):
-    label = np.zeros(len(answer2idx), dtype=np.float32)
-    for ans_dict in answers:
-        ans = ans_dict['answer']
-        if ans in answer2idx:
-            label[answer2idx[ans]] += 1.0 / len(answers)
-    return label
+    for ans, cnt in counts.items():
+        if ans in ans2idx:  # skip OOV answers
+            target[ans2idx[ans]] = min(cnt / 3.0, 1.0) # This is the VQA protocol
 
+    return target
 
 def vqa_score_from_soft_targets(logits, soft_targets):
     """
-    logits: [B, C]
-    soft_targets: [B, C] (counts/10 or probabilities)
-    Official VQA scoring for a predicted answer p: min(1, count(p)/3).
-    If soft_targets is counts/10, count(p) = soft_targets[p] * 10.
-    Thus score = clamp(soft_targets[i_pred] * 10 / 3, 0, 1)
-    Returns mean score over batch.
+    Compute VQA accuracy score from logits and soft targets.
+
+    Args:
+        logits (torch.Tensor): (B, C) raw model outputs
+        soft_targets (torch.Tensor): (B, C) soft targets from VQA protocol
+
+    Returns:
+        float: mean VQA accuracy over batch
     """
-    preds = logits.argmax(dim=1)           # [B]
-    idx = preds.unsqueeze(1)
-    # gather soft_targets at predicted indices
-    pred_soft = soft_targets.gather(1, idx).squeeze(1)  # [B]
-    scores = torch.clamp(pred_soft * 10.0 / 3.0, max=1.0)
+    
+    preds = torch.argmax(logits, dim=-1)
+
+    # Hacky gather() trick. Just take soft target that matches the predicted class.
+    scores = soft_targets.gather(1, preds.unsqueeze(1)).squeeze(1)
+
     return scores.mean().item()
 
 
