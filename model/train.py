@@ -2,10 +2,11 @@ import torch, torch.nn as nn, math, json, wandb, os, time, sys
 
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.amp.grad_scaler import GradScaler
 from torch.amp.autocast_mode import autocast
+from torch.amp.grad_scaler import GradScaler
 from torch.utils.data import DataLoader
 from datasets import load_from_disk
+from pprint import pprint
 from torch import optim
 from tqdm import tqdm
 
@@ -25,7 +26,7 @@ def main():
     # === Config / Hyperparameters === #
     # -------------------------------- #
     cfg = vars(get_parser().parse_args())
-    print(f'Config:\n{cfg}')
+    pprint(f'Config:\n{cfg}')
 
     # Paths
     VQA_W_EMBED_PATH = cfg['dataset_path']
@@ -133,13 +134,16 @@ def main():
     # === Model / Optimizer / Scheduler / Criterion === #
     # ------------------------------------------------- #
 
-    model = GraphGPSNet(
+    model_conf = dict(
         node_dim = model_node_dim,
         edge_dim = model_edge_dim,
         output_dim = len(answer2idx),
         pe_dim = lap_pe_dim,
         **get_model_config()
-    ).to(device)
+    )
+    model = GraphGPSNet(**model_conf).to(device)
+
+    pprint(f'Model config:\n{model_conf}')
 
     num_params = sum(p.numel() for p in model.parameters())
     print(f"Total number of parameters: {num_params: ,}")
