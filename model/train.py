@@ -3,6 +3,7 @@ import torch, torch.nn as nn, math, json, wandb, os, time, sys
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from transformers import get_cosine_schedule_with_warmup
 from torch.amp.autocast_mode import autocast
+from torch.amp.grad_scaler import GradScaler
 from torch.utils.data import DataLoader
 from datasets import load_from_disk
 from pprint import pprint
@@ -18,6 +19,46 @@ sys.path.append('..')
 from data.VQA.dataset import VQAGraphsDataset
 
 
+# helper to move entire dict to device
+def move_batch_to_device(batch, device, non_blocking=False):
+    return {k: (v.to(device, non_blocking=non_blocking) if isinstance(v, torch.Tensor) else v) for k, v in batch.items()}
+
+
+
+# -------------------------------
+# Validation function
+# -------------------------------
+@torch.no_grad()
+def validate(model, val_loader, criterion, device, move_fn, val_batches=None, use_amp=True):
+    model.eval()
+    val_loss = 0.0
+    val_steps = 0
+    val_vqa_acc = 0.0
+
+    for val_batch_num, (val_inputs, val_labels) in enumerate(val_loader):
+        if val_batches is not None and val_batch_num >= val_batches:
+            break
+
+        val_inputs = move_fn(val_inputs, device)
+        val_labels = val_labels.to(device)
+
+        with autocast(device_type='cuda', dtype=torch.bfloat16, enabled=use_amp):
+            val_logits = model(**val_inputs)
+            val_loss += criterion(val_logits, val_labels).item()
+            val_vqa_acc += vqa_score_from_soft_targets(val_logits, val_labels)
+            val_steps += 1
+
+    val_loss /= max(1, val_steps)
+    val_vqa_acc /= max(1, val_steps)
+    model.train()
+    return val_loss, val_vqa_acc
+
+
+
+
+# -------------------------------
+# Main training function
+# -------------------------------
 def main():
 
     # -------------------------------- #
@@ -150,15 +191,7 @@ def main():
     print('Model config:')
     pprint(model_conf)
 
-    num_params = sum(p.numel() for p in model.parameters())
-    print(f"Total number of parameters: {num_params: ,}")
-
-    num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Total number of trainable parameters: {num_trainable_params: ,}")
-
-
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-
     total_updates = math.ceil(len(train_loader) * num_epochs / grad_accum_steps)
     warmup_steps = int(warmup_fraction * total_updates)
 
@@ -169,8 +202,7 @@ def main():
     )
 
     criterion = nn.BCEWithLogitsLoss()
-
-
+    scaler = GradScaler(enabled=use_amp, device=device)
 
     # ----------------------------------------------------------- #
     # === Load checkpoint (and opt + sched state dicts) === #
@@ -185,16 +217,13 @@ def main():
         model.load_state_dict(ckpt['model'])
         optimizer.load_state_dict(ckpt['optimizer'])
         scheduler.load_state_dict(ckpt['scheduler'])
+        scaler.load_state_dict(ckpt.get('scaler', {}))
         start_epoch = ckpt['epoch'] + 1
         global_update = ckpt['global_update']
         best_val_score = ckpt.get('best_val_score', best_val_score)
         print(f"Resumed from {resume_checkpoint} (epoch {start_epoch}, update {global_update})")
 
 
-
-    # helper to move entire dict to device
-    def move_batch_to_device(batch, device, non_blocking=False):
-        return {k: (v.to(device, non_blocking=non_blocking) if isinstance(v, torch.Tensor) else v) for k, v in batch.items()}
 
     # ----------------------------------------------------------- #
     # === Train loop! (With wandb logging and all the frills) === #
@@ -225,25 +254,28 @@ def main():
                 inputs = move_batch_to_device(inputs, device, non_blocking=pin_memory)
                 labels = labels.to(device, non_blocking=pin_memory)
 
+                # Forward + loss
                 with autocast(device_type='cuda', dtype=torch.bfloat16, enabled=use_amp):
-                    logits = model(**inputs)                # [B, C]
+                    logits = model(**inputs)
                     loss = criterion(logits, labels)
                     loss = loss / grad_accum_steps
 
-                loss.backward()
+                # Backward + grad accumulation
+                scaler.scale(loss).backward()
                 epoch_loss += loss.item() * grad_accum_steps
                 epoch_steps += 1
 
-                # only step optimizer on accumulation boundary
+                # Step optimizer
                 if (step + 1) % grad_accum_steps == 0:
-                    # clip + step
+                    scaler.unscale_(optimizer)
                     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-                    optimizer.step()
+                    scaler.step(optimizer)
+                    scaler.update()
                     scheduler.step()
                     optimizer.zero_grad()
                     global_update += 1
 
-                    # logging
+                    # Logging
                     if global_update % log_every_n_updates == 0:
                         train_vqa_acc = vqa_score_from_soft_targets(logits.detach(), labels.detach())
                         current_lr = scheduler.get_last_lr()[0]
@@ -255,32 +287,13 @@ def main():
                             "global_update": global_update
                         }, step=global_update)
 
-                    # Validation (on optimizer updates)
+                    # Validation
                     if global_update % val_interval_updates == 0:
-                        model.eval()
-                        val_loss = 0.0
-                        val_steps = 0
-                        val_vqa_acc = 0.0
-                        with torch.no_grad():
-                            valid_pbar = tqdm(enumerate(valid_loader), total=val_batches if val_batches is not None else len(valid_loader), desc=f"Validation", leave=False)
-                            for val_batch_num, (val_inputs, val_labels) in valid_pbar:
-                                if val_batches is not None and val_batch_num >= val_batches:
-                                    break
-
-                                val_inputs = move_batch_to_device(val_inputs, device, non_blocking=pin_memory)
-                                val_labels = val_labels.to(device, non_blocking=pin_memory)
-
-                                with autocast(device_type='cuda', dtype=torch.bfloat16, enabled=use_amp):
-                                    val_logits = model(**val_inputs)
-                                    val_loss += criterion(val_logits, val_labels).item()
-                                    val_vqa_acc += vqa_score_from_soft_targets(val_logits, val_labels)
-                                    val_steps += 1
-                        val_loss = val_loss / max(1, val_steps)
-                        val_vqa_acc = val_vqa_acc / max(1, val_steps)
+                        val_loss, val_vqa_acc = validate(model, valid_loader, criterion, device,
+                                                         move_batch_to_device, val_batches, use_amp)
+                        
                         wandb.log({"val/loss": val_loss, "val/vqa_acc": val_vqa_acc}, step=global_update)
-                        model.train()
 
-                        # best checkpoint
                         if save_best and val_vqa_acc > best_val_score:
                             best_val_score = val_vqa_acc
                             best_ckpt = os.path.join(checkpoint_dir, f"best_ckpt_update_{global_update}.pt")
@@ -288,42 +301,47 @@ def main():
                                 'model': model.state_dict(),
                                 'optimizer': optimizer.state_dict(),
                                 'scheduler': scheduler.state_dict(),
+                                'scaler': scaler.state_dict(),
                                 'epoch': epoch,
                                 'global_update': global_update,
                                 'best_val_score': best_val_score
                             }, best_ckpt)
                             print(f"Saved new best checkpoint: {best_ckpt}")
 
-                    # periodic checkpoint
+                    # Periodic checkpoint
                     if global_update % checkpoint_interval_updates == 0:
                         ckpt_path = os.path.join(checkpoint_dir, f"ckpt_update_{global_update}.pt")
                         torch.save({
                             'model': model.state_dict(),
                             'optimizer': optimizer.state_dict(),
                             'scheduler': scheduler.state_dict(),
+                            'scaler': scaler.state_dict(),
                             'epoch': epoch,
                             'global_update': global_update,
                             'best_val_score': best_val_score
                         }, ckpt_path)
                         print(f"Saved checkpoint at update {global_update}: {ckpt_path}")
 
-                # progress bar update
+                # Progress bar
                 if (step + 1) % max(1, len(train_loader)//100) == 0:
-                    pbar.set_postfix({"loss": epoch_loss / epoch_steps if epoch_steps else 0.0})
+                    pbar.set_postfix({"loss": epoch_loss / epoch_steps})
 
-            # if leftover gradients because dataloader ended not divisible by grad_accum_steps:
+            # Flush leftover gradients
             if (step + 1) % grad_accum_steps != 0:
+                scaler.unscale_(optimizer)
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-                optimizer.step()
+                scaler.step(optimizer)
+                scaler.update()
                 scheduler.step()
                 optimizer.zero_grad()
                 global_update += 1
-                print("Flushed leftover gradients at epoch end (performed final optimizer.step())")
+                print("Flushed leftover gradients at epoch end.")
 
-            # epoch summary
+            # Epoch summary
             epoch_time = time.time() - t0
-            wandb.log({"epoch": epoch, "epoch/train_loss": epoch_loss / max(1, epoch_steps), "epoch_time": epoch_time}, step=global_update)
-            print(f"Epoch {epoch} finished. avg loss {epoch_loss / max(1, epoch_steps):.4f} time {epoch_time:.1f}s")
+            wandb.log({"epoch": epoch, "epoch/train_loss": epoch_loss / epoch_steps, "epoch_time": epoch_time},
+                      step=global_update)
+            print(f"Epoch {epoch} finished. avg loss {epoch_loss / epoch_steps:.4f} time {epoch_time:.1f}s")
 
     except KeyboardInterrupt:
         print("KeyboardInterrupt caught — saving last checkpoint.")
@@ -332,6 +350,7 @@ def main():
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'scheduler': scheduler.state_dict(),
+            'scaler': scaler.state_dict(),
             'epoch': epoch,
             'global_update': global_update,
             'best_val_score': best_val_score
