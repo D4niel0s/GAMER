@@ -25,7 +25,8 @@ def main():
     # === Config / Hyperparameters === #
     # -------------------------------- #
     cfg = vars(get_parser().parse_args())
-    pprint(f'Config:\n{cfg}')
+    print('Config:')
+    pprint(cfg)
 
     # Paths
     VQA_W_EMBED_PATH = cfg['dataset_path']
@@ -124,9 +125,9 @@ def main():
         num_workers=num_workers, pin_memory=pin_memory, persistent_workers=persistent_workers
     )
 
-    # Here no shuffle according to internet (dudes on multiple ancient forums) - either way id doesn't matter so why bother shuffling
+    # Traditionally no shuffle, but we do partial validation so to preserve I.I.D sampling for validation we need to shuffle
     valid_loader = DataLoader(
-        valid_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_func,
+        valid_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_func,
         num_workers=max(1, num_workers//2), pin_memory=pin_memory, persistent_workers=persistent_workers
     )
 
@@ -147,7 +148,8 @@ def main():
     )
     model = GraphGPSNet(**model_conf).to(device)
 
-    pprint(f'Model config:\n{model_conf}')
+    print('Model config:')
+    pprint(model_conf)
 
     num_params = sum(p.numel() for p in model.parameters())
     print(f"Total number of parameters: {num_params: ,}")
