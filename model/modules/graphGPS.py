@@ -18,13 +18,13 @@ class GraphGPSNet(nn.Module):
         self, *,                          # makes everything after pass as a kwarg
         node_dim: int,                    # node feature dim (0 if none)
         edge_dim: int = 0,                # edge feature dim (0 if none)
-        num_tasks: int = 1,               # graph-level outputs
+        output_dim: int = 1,              # Dimension of output vector from model
         hidden_dim: int = 128,
         pe_dim: int = 16,                 # LapPE dimensions (0 to disable)
         num_layers: int = 4,
         heads: int = 4,
         dropout: float = 0.1,
-        post_mlp_width_mult: int = 2.0,   # hidden width multiplier
+        mlps_hidden_layers = 1,
         readout_method: Literal['mean'] = 'mean' # TODO: think about readout methods
     ):
         super().__init__()
@@ -38,10 +38,10 @@ class GraphGPSNet(nn.Module):
 
         # Input projection for node features, with optional PE
         ch_in = node_dim + pe_dim if self.use_pe else node_dim
-        self.node_mlp = mlp(ch_in=ch_in, ch_out=hidden_dim, hidden=hidden_dim, num_hidden_layers=1, dropout=dropout)
+        self.node_mlp = mlp(ch_in=ch_in, ch_out=hidden_dim, hidden=hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout)
 
         # Projection for edge feats to hidden dimension (if edge_dim > 0)
-        self.edge_mlp = mlp(edge_dim, hidden_dim, hidden_dim, num_hidden_layers=1, dropout=dropout) if edge_dim > 0 else None
+        self.edge_mlp = mlp(edge_dim, hidden_dim, hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout) if edge_dim > 0 else None
         
 
         # Stack of GPSConv blocks
@@ -50,13 +50,13 @@ class GraphGPSNet(nn.Module):
 
             if edge_dim > 0:
                 local_gnn = GINEConv(
-                    mlp(hidden_dim, hidden_dim, hidden_dim, num_hidden_layers=1, dropout=dropout),
+                    mlp(hidden_dim, hidden_dim, hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout),
                     train_eps=True,
                     edge_dim=hidden_dim
                 )
             else:
                 local_gnn = GINConv(
-                    mlp(hidden_dim, hidden_dim, hidden_dim, num_hidden_layers=1, dropout=dropout),
+                    mlp(hidden_dim, hidden_dim, hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout),
                     train_eps=True
                 )
 
@@ -76,17 +76,17 @@ class GraphGPSNet(nn.Module):
         self.postnet = mlp(
             ch_in = hidden_dim,
             ch_out = hidden_dim,
-            hidden = int(post_mlp_width_mult * hidden_dim),
-            num_hidden_layers = 0,
+            hidden =  hidden_dim,
+            num_hidden_layers = mlps_hidden_layers,
             dropout = dropout
         )
 
         # Post aggregation readout
         self.readout = mlp(
             ch_in = hidden_dim,
-            ch_out = num_tasks,
+            ch_out = output_dim,
             hidden = hidden_dim,
-            num_hidden_layers = 0,
+            num_hidden_layers = mlps_hidden_layers,
             dropout = dropout
         )
 
