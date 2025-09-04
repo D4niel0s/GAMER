@@ -191,6 +191,13 @@ def main():
     print('Model config:')
     pprint(model_conf)
 
+    num_params = sum(p.numel() for p in model.parameters())
+    print(f"Total number of parameters: {num_params: ,}")
+
+    num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Total number of trainable parameters: {num_trainable_params: ,}")
+
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     total_updates = math.ceil(len(train_loader) * num_epochs / grad_accum_steps)
     warmup_steps = int(warmup_fraction * total_updates)
