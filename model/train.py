@@ -1,13 +1,12 @@
 import torch, torch.nn as nn, math, json, wandb, os, time, sys
 
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from transformers import get_cosine_schedule_with_warmup
 from torch.amp.autocast_mode import autocast
 from torch.amp.grad_scaler import GradScaler
 from torch.utils.data import DataLoader
 from datasets import load_from_disk
 from pprint import pprint
-from torch import optim
 from tqdm import tqdm
 
 from modules.mmg_builder import build_multimodal_graph
@@ -41,6 +40,11 @@ def main():
     batch_size = cfg['batch_size']
     grad_accum_steps = cfg['grad_acc_steps']
     max_grad_norm = cfg['max_grad_norm']
+
+    learning_rate = cfg['adamw_lr']
+    weight_decay = cfg['adamw_weight_decay']
+    warmup_fraction = cfg['warmup_fraction']
+
     val_interval_updates = cfg['val_interval_updates']
     val_batches = cfg['val_batches']
     checkpoint_interval_updates = cfg['checkpoint_interval_updates']
@@ -152,10 +156,16 @@ def main():
     print(f"Total number of trainable parameters: {num_trainable_params: ,}")
 
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     total_updates = math.ceil(len(train_loader) * num_epochs / grad_accum_steps)
-    scheduler = CosineAnnealingLR(optimizer, T_max=total_updates)
+    warmup_steps = int(warmup_fraction * total_updates)
+
+    scheduler = get_cosine_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=warmup_steps,
+        num_training_steps=total_updates
+    )
 
     scaler = GradScaler(device=device, enabled=use_amp)
 

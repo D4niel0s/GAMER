@@ -67,6 +67,26 @@ def get_parser() -> argparse.ArgumentParser:
         help="Maximum norm of gradient vectors for grad clipping.",
     )
     parser.add_argument(
+        "--adamw-lr",
+        type=float,
+        default=1e-3,
+        help="lr parameter of AdamW optimizer.",
+    )
+    parser.add_argument(
+        "--adamw-weight-decay",
+        type=float,
+        default=1e-2,
+        help="weight_decay parameter of AdamW optimizer.",
+    )
+    parser.add_argument(
+        "--warmup-fraction",
+        type=float,
+        default=0.05,
+        help="Fraction of total steps that would be warmup. Namely: linear warmup for int(fraction_warmup_steps * total_steps), then cosine decay.",
+    )
+
+
+    parser.add_argument(
         "--val-interval-updates",
         type=int,
         default=100,
