@@ -35,7 +35,8 @@ def validate(model, val_loader, criterion, device, move_fn, val_batches=None, us
     val_steps = 0
     val_vqa_acc = 0.0
 
-    for val_batch_num, (val_inputs, val_labels) in enumerate(val_loader):
+    valid_pbar = tqdm(enumerate(val_loader), total=val_batches if val_batches is not None else len(val_loader), desc=f"Validation", leave=False)
+    for val_batch_num, (val_inputs, val_labels) in valid_pbar:
         if val_batches is not None and val_batch_num >= val_batches:
             break
 
