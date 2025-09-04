@@ -163,3 +163,14 @@ def get_parser() -> argparse.ArgumentParser:
     )
 
     return parser
+
+
+def get_model_config():
+    return dict(
+        hidden_dim = 768,	            # idk man just match BERT or smth seems legit
+        num_layers = 5,	                # Graph is connected with max 5 hop distance
+        heads = 8,         	            # Random ass number that seems cool
+        dropout = 0.1,		            # idk man wtf is dropout
+        mlps_hidden_layers = 2,         # THICC MLPS
+        readout_method = 'mean'
+    )

@@ -12,8 +12,8 @@ from tqdm import tqdm
 from modules.mmg_builder import build_multimodal_graph
 from modules.cayley_builder import build_cayley_graph
 from modules.utils import vqa_score_from_soft_targets
+from config import get_parser, get_model_config
 from modules.graphGPS import GraphGPSNet
-from config import get_parser
 
 sys.path.append('..')
 from data.VQA.dataset import VQAGraphsDataset
@@ -49,13 +49,17 @@ def main():
 
     # Graph construction options
     add_lap_pe = cfg['add_lap_pe']
-    lap_pe_dim = cfg['lap_pe_dim']
+    lap_pe_dim = cfg['lap_pe_dim'] if add_lap_pe else 0
 
     match cfg['graph_construction_method']:
         case 'mmg':
             graph_constructor = build_multimodal_graph
+            model_node_dim = 768 + 5    # 768 is BERT / BEiT embeds. +5 feats are one-hot type feats concatted to embeds.
+            model_edge_dim = 6          # one-hot type feats for edges
         case 'cayley':
             graph_constructor = build_cayley_graph
+            model_node_dim = 768        # 768 is BERT / BEiT embeds. No additional feats since all nodes are the same here.
+            model_edge_dim = 0          # No edge feats since all edges are the same 'type'.
         case _: # default
             raise ValueError('Graph construction method must be mmg or cayley!')
         
@@ -130,16 +134,11 @@ def main():
     # ------------------------------------------------- #
 
     model = GraphGPSNet(
-        node_dim = 768 + 5,         # 768 is BERT/BeiT embeds, 5 extra feats are node type one-hots
-        edge_dim = 6, 		        # 6 feats are edge type one-hots
-        num_tasks = 3_000,	        # For VQA we need to predict from 3,000 classes (top 3k answers from train)
-        hidden_dim = 768,	        # idk man just match BERT or smth seems legit
+        node_dim = model_node_dim,
+        edge_dim = model_edge_dim,
+        output_dim = len(answer2idx),
         pe_dim = lap_pe_dim,
-        num_layers = 5,	            # Graph is connected with max 5 hop distance
-        heads = 8,         	        # Random ass number that seems cool
-        dropout = 0.1,		        # idk man wtf is dropout
-        post_mlp_width_mult = 2.0,
-        readout_method = 'mean'
+        **get_model_config()
     ).to(device)
 
     num_params = sum(p.numel() for p in model.parameters())
