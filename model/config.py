@@ -51,7 +51,7 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=16,
+        default=32,
         help="Batch size for training and validation.",
     )
     parser.add_argument(
@@ -89,19 +89,19 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--val-interval-updates",
         type=int,
-        default=100,
+        default=3_000,
         help="Number of model updates after which to perform validation.",
     )
     parser.add_argument(
         "--val-batches",
         type=int,
-        default=100,
+        default=1_000,
         help="Maximum number of batches to validate over. None to do full validation.",
     )
     parser.add_argument(
         "--checkpoint-interval-updates",
         type=int,
-        default=100,
+        default=1_000,
         help="Number of model updates after which to save a checkpoint.",
     )
     parser.add_argument(
@@ -187,7 +187,7 @@ def get_parser() -> argparse.ArgumentParser:
 
 def get_model_config():
     return dict(
-        hidden_dim = 768,	            # idk man just match BERT or smth seems legit
+        hidden_dim = 512,	            # seems reasonable
         num_layers = 5,	                # Graph is connected with max 5 hop distance
         heads = 8,         	            # Random ass number that seems cool
         dropout = 0.1,		            # idk man wtf is dropout
