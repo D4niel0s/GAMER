@@ -45,7 +45,7 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--num-epochs",
         type=int,
-        default=10,
+        default=12,
         help="Number of training epochs.",
     )
     parser.add_argument(
@@ -69,7 +69,7 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--adamw-lr",
         type=float,
-        default=1e-3,
+        default=2e-4,
         help="lr parameter of AdamW optimizer.",
     )
     parser.add_argument(

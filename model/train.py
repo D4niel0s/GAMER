@@ -199,7 +199,14 @@ def main():
     print(f"Total number of trainable parameters: {num_trainable_params: ,}")
 
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=learning_rate,
+        weight_decay=weight_decay,
+        betas=(0.9, 0.999), #default
+        eps=1e-8,           #default
+    )
+    
     total_updates = math.ceil(len(train_loader) * num_epochs / grad_accum_steps)
     warmup_steps = int(warmup_fraction * total_updates)
 
