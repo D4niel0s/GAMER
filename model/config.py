@@ -160,7 +160,7 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--self-loops-in-image-graph",
         type=bool,
-        default=False,
+        default=True,
         help="Used only for mmg construction. Wether or not to include self-loops in the image grid.",
     )
     parser.add_argument(
