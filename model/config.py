@@ -189,7 +189,7 @@ def get_model_config():
     return dict(
         hidden_dim = 512,	            # seems reasonable - matching BERT and everything
         num_layers = 4,	                # Graph is connected with max 5 hop distance
-        heads = 6,         	            # Random ass number that seems cool
+        heads = 8,         	            # Random ass number that seems cool
         dropout = 0.2,		            # idk man wtf is dropout
         mlps_hidden_layers = 3,         # THICC MLPS
         readout_method = 'mean'
