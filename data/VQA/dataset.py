@@ -53,3 +53,45 @@ class VQAGraphsDataset(Dataset):
                     edge_attr = getattr(batch_graph, "edge_attr", None),    # optional edge features
                     lap_pe = getattr(batch_graph, "lap_pe", None),          # optional LapPE
         ), labels
+    
+
+
+
+class VQAGraphsDataset_TEST(VQAGraphsDataset):
+    def __init__(self, hf_dataset, answer2idx, graph_builder=None, **kwargs):
+        super().__init(hf_dataset, answer2idx, graph_builder=graph_builder, **kwargs)
+
+    def __getitem__(self, idx):
+        item = self.dataset[idx]
+        i_embed = torch.tensor(item['image_embedding']).unsqueeze(0)
+        q_embed = torch.tensor(item['question_embedding']).unsqueeze(0)
+
+        if self.graph_builder is not None:
+            graph = self.graph_builder(
+                text_embeds = q_embed,
+                image_embeds = i_embed,
+                attn_mask = torch.ones(1,q_embed.shape[1]),
+                **self.graph_building_args
+            )[0]        # this is a list of length one - select the data object
+        else:
+            graph = None
+
+        
+        return graph, item['question_id']
+    
+    @staticmethod
+    def vqa_test_collate_fn(batch, add_lap_pe = True, lap_pe_transform = AddLaplacianEigenvectorPE(k=16, attr_name="lap_pe", is_undirected=True)):
+        graphs, ids = zip(*batch)
+
+        if add_lap_pe:
+            graphs = [lap_pe_transform(graph) for graph in graphs]
+
+        batch_graph = Batch.from_data_list(graphs)
+
+        return dict(
+                    x = getattr(batch_graph, "x", None),                    # node features or None
+                    edge_index = batch_graph.edge_index,                    # edge index
+                    batch = batch_graph.batch,                              # graph id per node
+                    edge_attr = getattr(batch_graph, "edge_attr", None),    # optional edge features
+                    lap_pe = getattr(batch_graph, "lap_pe", None),          # optional LapPE
+        ), ids
