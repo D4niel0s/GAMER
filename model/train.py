@@ -191,6 +191,9 @@ def main():
 
     print('Model config:')
     pprint(model_conf)
+    
+    print('Model:')
+    print(model)
 
     num_params = sum(p.numel() for p in model.parameters())
     print(f"Total number of parameters: {num_params: ,}")
