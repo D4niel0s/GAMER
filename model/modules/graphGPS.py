@@ -7,7 +7,8 @@ from torch_geometric.nn import (
     GINConv,
     global_mean_pool,
     LayerNorm,
-    SAGPooling
+    SAGPooling,
+    GATConv
 )
 
 from .utils import mlp
@@ -84,22 +85,10 @@ class GraphGPSNet(nn.Module):
 
             if self.sagpool_mode == 'hierarchical':
                 if (ratio := self.sagpool_ratios[i]) is not None:
-                    if edge_dim > 0:
-                        pooling_gnn = GINEConv(
-                            mlp(hidden_dim, 1, hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout),
-                            train_eps=True,
-                            edge_dim=hidden_dim
-                        )
-                    else:
-                        pooling_gnn = GINConv(
-                            mlp(hidden_dim, 1, hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout),
-                            train_eps=True
-                        )
-
                     sag_pool = SAGPooling(
                         in_channels=hidden_dim,
                         ratio=ratio,
-                        GNN=pooling_gnn,
+                        GNN=GATConv,
                         min_score=None,
                         multiplier=1.0
                     )
@@ -120,22 +109,10 @@ class GraphGPSNet(nn.Module):
 
 
         if self.sagpool_mode == 'global':
-            if edge_dim > 0:
-                pooling_gnn = GINEConv(
-                    mlp(hidden_dim, 1, hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout),
-                    train_eps=True,
-                    edge_dim=hidden_dim
-                )
-            else:
-                pooling_gnn = GINConv(
-                    mlp(hidden_dim, 1, hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout),
-                    train_eps=True
-                )
-
             self.global_sagpool = SAGPooling(
                 in_channels=hidden_dim,
                 ratio=global_sagpool_ratio,
-                GNN=pooling_gnn,
+                GNN=GATConv,
                 min_score=None,
                 multiplier=1.0
             )
