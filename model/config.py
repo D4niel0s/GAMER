@@ -187,10 +187,16 @@ def get_parser() -> argparse.ArgumentParser:
 
 def get_model_config():
     return dict(
-        hidden_dim = 512,	            # seems reasonable - matching BERT and everything
+        hidden_dim = 512,	            # Reasonable size - compensating to get faster compute (would like 768 to match BERT/BEiT)
         num_layers = 4,	                # Graph is connected with max 5 hop distance
-        heads = 8,         	            # Random ass number that seems cool
-        dropout = 0.2,		            # idk man wtf is dropout
-        mlps_hidden_layers = 3,         # THICC MLPS
-        readout_method = 'mean'
+        heads = 8,         	            # Powerful attention - also a divisor of 512 😅
+        dropout = 0.2,		            # Some regularization
+        mlps_hidden_layers = 3,         # THICC MLPS 🗣️
+        
+        sagpool_mode = 'none',
+        global_sagpool_ratio = 0.5,     # If sagpool mode is global, this is the ratio - 0.5 throws out noise but retains information, hopefully cleaner output
+        sagpool_layer2ratio = {         # If sagpool mode is hierarchical, dict of layer:ratio where pool is applied after layer. 0 indexed.
+            1:0.7, 2:0.7, 3:0.8         # Start with ~200 nodes for 2 layers, then ~140, then ~100, finally ~80 for readout
+        },
+        global_pool_method = 'mean'     # Actually does nothing in the model but here for redability 😇
     )
