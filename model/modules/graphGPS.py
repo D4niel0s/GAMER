@@ -7,6 +7,7 @@ from torch_geometric.nn import (
     GINConv,
     global_mean_pool,
     LayerNorm,
+    SAGPooling
 )
 
 from .utils import mlp
@@ -25,7 +26,13 @@ class GraphGPSNet(nn.Module):
         heads: int = 4,
         dropout: float = 0.1,
         mlps_hidden_layers = 1,
-        readout_method: Literal['mean'] = 'mean' # TODO: think about readout methods
+
+        
+        # SAGPool Configuration
+        sagpool_mode: Literal['none', 'global', 'hierarchical'] = 'none',
+        global_sagpool_ratio: float = 0.6,
+        sagpool_layer2ratio: dict[int:float] = {},
+        global_pool_method: Literal['mean'] = 'mean' # TODO: think about readout methods
     ):
         super().__init__()
 
@@ -33,8 +40,9 @@ class GraphGPSNet(nn.Module):
         self.edge_dim = edge_dim
         self.hidden_dim = hidden_dim
 
-        self.readout_method = readout_method if readout_method in ['mean'] else None
-        assert self.readout_method is not None, "Invalid readout method specified. Use 'mean'."
+        self.sagpool_mode = sagpool_mode
+        self.sagpool_ratios = [sagpool_layer2ratio[i] if i in sagpool_layer2ratio else None for i in range(num_layers)]
+
 
         # Input projection for node features, with optional PE
         ch_in = node_dim + pe_dim if self.use_pe else node_dim
@@ -46,7 +54,9 @@ class GraphGPSNet(nn.Module):
 
         # Stack of GPSConv blocks
         self.layers = nn.ModuleList()
-        for _ in range(num_layers):
+        self.pools = nn.ModuleList() if self.sagpool_mode == 'hierarchical' else nn.ModuleList([None]*num_layers)
+
+        for i in range(num_layers):
 
             if edge_dim > 0:
                 local_gnn = GINEConv(
@@ -72,6 +82,33 @@ class GraphGPSNet(nn.Module):
 
             self.layers.append(block)
 
+            if self.sagpool_mode == 'hierarchical':
+                if (ratio := self.sagpool_ratios[i]) is not None:
+                    if edge_dim > 0:
+                        pooling_gnn = GINEConv(
+                            mlp(hidden_dim, 1, hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout),
+                            train_eps=True,
+                            edge_dim=hidden_dim
+                        )
+                    else:
+                        pooling_gnn = GINConv(
+                            mlp(hidden_dim, 1, hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout),
+                            train_eps=True
+                        )
+
+                    sag_pool = SAGPooling(
+                        in_channels=hidden_dim,
+                        ratio=ratio,
+                        GNN=pooling_gnn,
+                        min_score=None,
+                        multiplier=1.0
+                    )
+
+                else:
+                    sag_pool = None
+
+                self.pools.append(sag_pool)
+
         # Post-encoder feed-forward (like Transformer FFN)
         self.postnet = mlp(
             ch_in = hidden_dim,
@@ -80,6 +117,29 @@ class GraphGPSNet(nn.Module):
             num_hidden_layers = mlps_hidden_layers,
             dropout = dropout
         )
+
+
+        if self.sagpool_mode == 'global':
+            if edge_dim > 0:
+                pooling_gnn = GINEConv(
+                    mlp(hidden_dim, 1, hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout),
+                    train_eps=True,
+                    edge_dim=hidden_dim
+                )
+            else:
+                pooling_gnn = GINConv(
+                    mlp(hidden_dim, 1, hidden_dim, num_hidden_layers=mlps_hidden_layers, dropout=dropout),
+                    train_eps=True
+                )
+
+            self.global_sagpool = SAGPooling(
+                in_channels=hidden_dim,
+                ratio=global_sagpool_ratio,
+                GNN=pooling_gnn,
+                min_score=None,
+                multiplier=1.0
+            )
+            
 
         # Post aggregation readout
         self.readout = mlp(
@@ -110,18 +170,32 @@ class GraphGPSNet(nn.Module):
         # Project edge features to hidden dimension (if they exist)
         edge_attr = self.edge_mlp(edge_attr) if self.edge_dim > 0 else None
         
-        # GPS layers (+ residual after each)
-        for layer in self.layers:
+        # GPS layers and pools as specified
+        for layer, pool in zip(self.layers, self.pools):
+            # Apply GPS layer + resid
             if self.edge_dim > 0:
                 h = layer(x, edge_index, batch=batch, edge_attr=edge_attr)  # GINE
             else:
                 h = layer(x, edge_index, batch=batch)                       # GIN
 
             x = x + h
+
+            # Apply pool (if exists)
+            if pool is not None:
+                if self.edge_dim > 0:
+                    x, edge_index, edge_attr, batch, _,_ = pool(x, edge_index, edge_attr=edge_attr, batch=batch)
+                else:
+                    x, edge_index, _, batch, _,_ = pool(x, edge_index, batch=batch)
             
         # postnet + residual
         h = self.postnet(x)
         x = x + h
+
+        if self.sagpool_mode == 'global':
+            if self.edge_dim > 0:
+                x, edge_index, edge_attr, batch, _,_ = self.global_sagpool(x, edge_index, edge_attr=edge_attr, batch=batch)
+            else:
+                x, edge_index, _, batch, _,_ = self.global_sagpool(x, edge_index, batch=batch)
 
         # Graph-level pooling
         g = global_mean_pool(x, batch)
