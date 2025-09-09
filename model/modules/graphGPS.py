@@ -89,8 +89,6 @@ class GraphGPSNet(nn.Module):
                         in_channels=hidden_dim,
                         ratio=ratio,
                         GNN=GATConv,
-                        min_score=None,
-                        multiplier=1.0
                     )
 
                 else:
@@ -113,8 +111,6 @@ class GraphGPSNet(nn.Module):
                 in_channels=hidden_dim,
                 ratio=global_sagpool_ratio,
                 GNN=GATConv,
-                min_score=None,
-                multiplier=1.0
             )
             
 
