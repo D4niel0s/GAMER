@@ -23,7 +23,7 @@ def move_batch_to_device(batch, device, non_blocking=False):
 
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def evaluate_val(model, loader, device, use_amp=True, max_batches=None):
     """Evaluate on validation split with VQA accuracy."""
 
@@ -49,7 +49,7 @@ def evaluate_val(model, loader, device, use_amp=True, max_batches=None):
 
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def predict_test(model, test_loader, idx2ans, device, use_amp=True, output_json="test_predictions.json"):
     """Run inference on test set and dump predictions in VQA format."""
     model.eval()
@@ -63,7 +63,7 @@ def predict_test(model, test_loader, idx2ans, device, use_amp=True, output_json=
 
         # Get argmax prediction
         pred_ids = logits.argmax(dim=-1).cpu().tolist()
-        answers = [idx2ans[str(pid)] for pid in pred_ids]
+        answers = [idx2ans[pid] for pid in pred_ids]
 
         for qid, ans in zip(qids, answers):
             results.append({"question_id": int(qid), "answer": ans})
