@@ -59,7 +59,7 @@ class VQAGraphsDataset(Dataset):
 
 class VQAGraphsDataset_TEST(VQAGraphsDataset):
     def __init__(self, hf_dataset, answer2idx, graph_builder=None, **kwargs):
-        super().__init(hf_dataset, answer2idx, graph_builder=graph_builder, **kwargs)
+        super().__init__(hf_dataset, answer2idx, graph_builder=graph_builder, **kwargs)
 
     def __getitem__(self, idx):
         item = self.dataset[idx]
