@@ -90,10 +90,8 @@ def main():
     # Paths
     VQA_W_EMBED_PATH = cfg['dataset_path']
     ANSWER_2_IDX_JSON_PATH = cfg['ans2idx_path']
-    checkpoint_dir = cfg['checkpoint_dir']
     resume_checkpoint = cfg['resume_checkpoint']
 
-    os.makedirs(checkpoint_dir, exist_ok=True)
 
     # Training params / options
     batch_size = cfg['batch_size']
@@ -215,7 +213,7 @@ def main():
     # Run test prediction dump
     idx2ans = {v:k for k,v in answer2idx.items()}
     
-    output_json = predict_test(model, test_loader, idx2ans, device, use_amp=cfg["use_amp"])
+    output_json = predict_test(model, test_loader, idx2ans, device, use_amp=cfg["use_amp"], output_json='/home/yandex/MLWG2025/danielvolkov/evaluations/mmg_no_sagpool.json')
     print(f"Test predictions saved to {output_json}")
 
 
