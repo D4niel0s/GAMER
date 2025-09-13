@@ -1,9 +1,12 @@
 # GAMER - Graphs As Multi-modal intErmediate Representations
 
 
-[![](https://img.shields.io/badge/paper-black?logo=paperswithcode&style=for-the-badge)](https://youtube.com)
-[![](https://img.shields.io/badge/trained%20Checkpoints-black?logo=huggingface&style=for-the-badge)](https://huggingface.co)
-[![](https://img.shields.io/badge/experiments-black?logo=weightsandbiases&style=for-the-badge)](https://wandb.ai/the_GAMERs/GAMER)
+<div align="center">
+
+[![paper](https://img.shields.io/badge/paper-black?logo=paperswithcode&style=for-the-badge)](https://youtube.com)
+[![trained checkpoints](https://img.shields.io/badge/trained%20Checkpoints-black?logo=huggingface&style=for-the-badge)](https://huggingface.co)
+[![experiments](https://img.shields.io/badge/experiments-black?logo=weightsandbiases&style=for-the-badge)](https://wandb.ai/the_GAMERs/GAMER)
+</div>
 
 
 **Here explain about project high level a couple of words/paragraphs.**
