@@ -128,6 +128,13 @@ def get_parser() -> argparse.ArgumentParser:
     # --------------------------------------------------------------- #
 
     parser.add_argument(
+        "--embeds-type",
+        type=str,
+        default='BERT/BEiT',
+        help="What is the type of embedding in the dataset specified by --dataset-path. Can be either \"BERT/BEiT\" or \"CLIP\"."
+    )
+
+    parser.add_argument(
         "--add-lap-pe",
         type=bool,
         default=True,

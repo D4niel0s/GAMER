@@ -100,15 +100,23 @@ def main():
     add_lap_pe = cfg['add_lap_pe']
     lap_pe_dim = cfg['lap_pe_dim'] if add_lap_pe else 0
 
+    match cfg['embeds_type']:
+        case 'BERT/BEiT':
+            d_embed = 768 # BERT/BEiT embedding dimension
+        case 'CLIP':
+            d_embed = 512 # CLIP shared latent space dimension
+        case _:
+            raise ValueError('Type of embeddings must be \"BERT/BEiT\" or \"CLIP\"!')
+        
     match cfg['graph_construction_method']:
         case 'mmg':
             graph_constructor = build_multimodal_graph
-            model_node_dim = 768 + 5    # 768 is BERT / BEiT embeds. +5 feats are one-hot type feats concatted to embeds.
-            model_edge_dim = 6          # one-hot type feats for edges
+            model_node_dim = d_embed + 5    # +5 feats are one-hot type feats concatted to embeds.
+            model_edge_dim = 6              # one-hot type feats for edges
         case 'cayley':
             graph_constructor = build_cayley_graph
-            model_node_dim = 768        # 768 is BERT / BEiT embeds. No additional feats since all nodes are the same here.
-            model_edge_dim = 0          # No edge feats since all edges are the same 'type'.
+            model_node_dim = d_embed        # No additional feats since all nodes are the same here.
+            model_edge_dim = 0              # No edge feats since all edges are the same 'type'.
         case _: # default
             raise ValueError('Graph construction method must be mmg or cayley!')
         
