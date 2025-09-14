@@ -272,6 +272,7 @@ dependencies:
       - parso==0.8.4
       - pexpect==4.9.0
       - platformdirs==4.3.8
+      - primefac==2.0.12
       - prompt-toolkit==3.0.51
       - protobuf==6.32.0
       - ptyprocess==0.7.0
