@@ -29,8 +29,12 @@ beit_model = BeitModel.from_pretrained('microsoft/beit-base-patch16-224', use_sa
 @torch.no_grad()
 def encode_questions(questions):
     inputs = bert_tokenizer(questions, return_tensors="pt", padding=True).to(device)
+    attn_mask = inputs['attention_mask']
+
     outputs = bert_model(**inputs)
-    return outputs.last_hidden_state.cpu().numpy()  # CLS token
+    batch_embeds =  outputs.last_hidden_state.cpu().numpy()
+
+    return [e[attn_mask[i].bool()] for i,e in enumerate(batch_embeds)]
 
 @torch.no_grad()
 def encode_images(images):
@@ -50,7 +54,7 @@ def process_batch(batch):
     q_emb = encode_questions(batch["question"])
     i_emb = encode_images(batch["image"])
     return {
-        "question_embedding": [arr for arr in q_emb],
+        "question_embedding": q_emb,
         "image_embedding": [arr for arr in i_emb],
     }
 
