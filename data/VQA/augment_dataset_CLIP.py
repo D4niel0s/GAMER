@@ -63,4 +63,4 @@ vqa_emb = dataset.map(
 
 # Save to disk
 vqa_emb.save_to_disk("vqa_v2_with_embeddings")
-print("✅ Done! Dataset saved with batched BERT & BEiT embeddings.")
+print("✅ Done! Dataset saved with CLIP embeddings.")
