@@ -5,7 +5,7 @@
 
 [![paper](https://img.shields.io/badge/paper-black?logo=paperswithcode&style=for-the-badge)](https://youtube.com)
 [![trained checkpoints](https://img.shields.io/badge/trained%20Checkpoints-black?logo=huggingface&style=for-the-badge)](https://huggingface.co)
-[![experiments](https://img.shields.io/badge/experiments-black?logo=weightsandbiases&style=for-the-badge)](https://wandb.ai/the_GAMERs/GAMER)
+[![experiments](https://img.shields.io/badge/experiments-black?logo=weightsandbiases&style=for-the-badge)](https://wandb.ai/the_GAMERs/GAMER/reports/Convergence-plots-for-GAMER-experiments--VmlldzoxNDM3NzQ3Ng)
 </div>
 
 
