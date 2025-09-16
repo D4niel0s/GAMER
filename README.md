@@ -43,7 +43,7 @@ To train a model, our pre-processing pipeline should be followed:
 4. **Train!**
 
 We supply code for the entire pipeline, assuming the format of [this `VQA v2` dataset from 🤗](https://huggingface.co/datasets/pingzhili/vqa_v2) (which is standard, this should work on any respectable `VQA` distribution):
-1. To **add embeddings** to the dataset, run `GAMER/data/VQA/augment_dataset.py` or `GAMER/data/VQA/augment_dataset_CLIP.py`. The first will do `BERT/BEiT` un-aligned embeddings, while the second will do `CLIP` aligned embeddings. A path to save the new augmented dataset should be provided in the last line of code, as the argument for `save_to_disk`.
+1. To **add embeddings** to the dataset, run `GAMER/data/VQA/augment_dataset[_CLIP/BLIP].py`. Each of the `_augment_` files will compute the corresponding embddings and add them as two additional columns to the dataset, before saving it to the disk. A path to save the new augmented dataset should be provided in the last line of code, as the argument for `save_to_disk`.
 2. To **extract the relevant classification targets**, run `GAMER/data/VQA/extract_targets.py`. A path to save the targets dictionary should be provided (a `.json` file) as the first argument to `open`. The default number of top candidates is $3000$, but can be changed in the code, as the argument for `answer_counter.most_common`.
 3. To **configure the model's hyper-parameters**, fill in the relevant fields in `GAMER/model/config.py`, in the `get_model_config` function.
 4. To **run training**, run `GAMER/model/train.py`. There are many hyper-parameters that can be tuned with command line flags, or in the `config.py` file. All can be viewed by running `GAMER/model/train.py --help`. \

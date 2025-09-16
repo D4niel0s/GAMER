@@ -103,10 +103,12 @@ def main():
     match cfg['embeds_type']:
         case 'BERT/BEiT':
             d_embed = 768 # BERT/BEiT embedding dimension
+        case 'BLIP':
+            d_embed = 768 # BLIP shared latent space dimension
         case 'CLIP':
             d_embed = 512 # CLIP shared latent space dimension
         case _:
-            raise ValueError('Type of embeddings must be \"BERT/BEiT\" or \"CLIP\"!')
+            raise ValueError('Type of embeddings must be \"BERT/BEiT\", \"CLIP\" or \"BLIP\"!')
         
     match cfg['graph_construction_method']:
         case 'mmg':

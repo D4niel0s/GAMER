@@ -131,7 +131,7 @@ def get_parser() -> argparse.ArgumentParser:
         "--embeds-type",
         type=str,
         default='BERT/BEiT',
-        help="What is the type of embedding in the dataset specified by --dataset-path. Can be either \"BERT/BEiT\" or \"CLIP\"."
+        help="What is the type of embedding in the dataset specified by --dataset-path. Can be \"BERT/BEiT\", \"CLIP\" or \"BLIP\"."
     )
 
     parser.add_argument(
