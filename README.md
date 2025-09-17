@@ -13,7 +13,7 @@
 
 <div align="center">
 
-<img src="./assets/GAMER_Illustration.png" width=30%/>
+<img src="./assets/GAMER_Illustration.png" width=70%/>
 
 </div>
 
