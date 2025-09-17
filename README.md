@@ -1,9 +1,9 @@
 # GAMER - Graphs As Multi-modal intErmediate Representations
 
 
-<div align="center">
+<div align="center"> 
 
-[![paper](https://img.shields.io/badge/paper-black?logo=paperswithcode&style=for-the-badge)](https://youtube.com)
+[![paper](https://img.shields.io/badge/paper-black?logo=overleaf&style=for-the-badge)](https://youtube.com)
 [![trained checkpoints](https://img.shields.io/badge/trained%20Checkpoints-black?logo=huggingface&style=for-the-badge)](https://huggingface.co)
 [![experiments](https://img.shields.io/badge/experiments-black?logo=weightsandbiases&style=for-the-badge)](https://wandb.ai/the_GAMERs/GAMER/reports/Convergence-plots-for-GAMER-experiments--VmlldzoxNDM3NzQ3Ng)
 </div>
@@ -11,6 +11,11 @@
 
 **Here explain about project high level a couple of words/paragraphs.**
 
+<div align="center">
+
+<img src="./assets/GAMER_Illustration.png" width=30%/>
+
+</div>
 
 ## File/Code structure
 
