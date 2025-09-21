@@ -3,8 +3,8 @@
 
 <div align="center"> 
 
-[![paper](https://img.shields.io/badge/paper-black?logo=overleaf&style=for-the-badge)](https://youtube.com)
-[![trained checkpoints](https://img.shields.io/badge/trained%20Checkpoints-black?logo=huggingface&style=for-the-badge)](https://huggingface.co)
+[![paper](https://img.shields.io/badge/paper-black?logo=overleaf&style=for-the-badge)](./assets/paper.pdf)
+[![trained checkpoints](https://img.shields.io/badge/trained%20Checkpoints-black?logo=huggingface&style=for-the-badge)](https://huggingface.co/D4niel0s/GAMER_experiments)
 [![experiments](https://img.shields.io/badge/experiments-black?logo=weightsandbiases&style=for-the-badge)](https://wandb.ai/the_GAMERs/GAMER/reports/Convergence-plots-for-GAMER-experiments--VmlldzoxNDM3NzQ3Ng)
 </div>
 
