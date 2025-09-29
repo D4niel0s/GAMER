@@ -9,7 +9,7 @@
 </div>
 
 
-The current State-of-the-Art when considering multi-modal tasks often leverages cross attention in transformers in order to implement multi-modal fusion, often ignoring useful information about the nature of the different modalities. We introduce a novel approach, considering graphs as an intermediate abstraction for multi-modal input, and using a parameter-efficient \texttt{GNN} to learn multi-modal fusion. We present evidence that on the \texttt{VQA} task, our approach successfully implements multi-modal text-image fusion, and performs better when operating with un-aligned embeddings rather than aligned ones.
+The current State-of-the-Art when considering multi-modal tasks often leverages cross attention in transformers in order to implement multi-modal fusion, often ignoring useful information about the nature of the different modalities. We introduce a novel approach, considering graphs as an intermediate abstraction for multi-modal input, and using a parameter-efficient `GNN` to learn multi-modal fusion. We present evidence that on the `VQA` task, our approach successfully implements multi-modal text-image fusion, and performs better when operating with un-aligned embeddings rather than aligned ones.
 
 <div align="center">
 
